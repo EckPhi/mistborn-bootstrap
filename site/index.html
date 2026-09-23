@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mistborn Bootstrap</title>
+  <style>
+    :root { color-scheme: dark; --bg:#090f1d; --panel:#121c30; --line:#293852; --text:#edf4ff; --muted:#9cafc9; --accent:#2dd4bf; }
+    * { box-sizing:border-box } body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at top,#172642,var(--bg) 50%); color:var(--text); font:16px system-ui,sans-serif }
+    main { width:min(760px,calc(100% - 32px)); background:color-mix(in srgb,var(--panel) 92%,transparent); border:1px solid var(--line); border-radius:18px; padding:32px; box-shadow:0 24px 80px #0008 }
+    h1 { margin:0 0 8px; font-size:clamp(30px,6vw,48px) } p { color:var(--muted); line-height:1.6 }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin:28px 0 18px }
+    label { display:grid; gap:7px; color:var(--muted); font-size:14px } select,button { border:1px solid var(--line); border-radius:9px; padding:11px 12px; background:#0b1426; color:var(--text); font:inherit }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:18px; border:1px solid var(--line); border-radius:10px; background:#070d18; color:#b9f8eb; line-height:1.5 }
+    button { width:100%; cursor:pointer; background:var(--accent); color:#05241f; border:0; font-weight:750 } button:hover { filter:brightness(1.08) }
+    small { display:block; margin-top:14px; color:var(--muted) }
+  </style>
+</head>
+<body><main>
+  <h1>Mistborn Bootstrap</h1>
+  <p>Build a one-line installer for a fresh server. Review the generated script before running it; the installer requires root access.</p>
+  <div class="grid">
+    <label>Collection<select id="collection"><option value="server">Server</option><option value="shell">Shell only</option></select></label>
+    <label>Downloader<select id="downloader"><option value="curl">curl</option><option value="wget">wget</option></select></label>
+    <label>Release<select id="release"><option value="v0.1.0">v0.1.0</option><option value="main">Development (main)</option></select></label>
+  </div>
+  <pre id="command"></pre>
+  <button id="copy">Copy install command</button>
+  <small>Tip: replace <code>| sudo bash</code> with a download to inspect the script first.</small>
+</main><script>
+  const fields = [...document.querySelectorAll("select")];
+  const output = document.querySelector("#command");
+  function render() {
+    const collection = document.querySelector("#collection").value;
+    const release = document.querySelector("#release").value;
+    const url = `https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/${release}/dist/${collection}.sh`;
+    output.textContent = document.querySelector("#downloader").value === "curl" ? `curl -fsSL ${url} | sudo bash` : `wget -qO- ${url} | sudo bash`;
+  }
+  fields.forEach(field => field.addEventListener("change", render));
+  document.querySelector("#copy").addEventListener("click", async event => { await navigator.clipboard.writeText(output.textContent); event.currentTarget.textContent = "Copied"; setTimeout(() => event.currentTarget.textContent = "Copy install command", 1200); });
+  render();
+</script></body></html>

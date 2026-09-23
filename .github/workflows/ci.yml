@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install shell tools
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Build collections
+        run: ./tools/build.sh
+      - name: Check generated scripts
+        run: |
+          git diff --exit-code -- dist/
+          shellcheck -x lib/*.sh modules/*.sh tools/*.sh dist/*.sh
+          for script in dist/*.sh; do sudo bash "$script" --dry-run --yes --user runner; done
