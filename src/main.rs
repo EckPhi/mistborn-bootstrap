@@ -1,3 +1,4 @@
+mod command_dashboard;
 mod dashboard;
 mod plan;
 mod progress;
@@ -12,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use command_dashboard::CommandDashboard;
 use dashboard::Dashboard;
-use plan::{Plan, Stage};
 use progress::ProgressView;
 
 #[derive(Debug)]
@@ -399,6 +400,9 @@ fn execute(options: Options) -> Result<(), String> {
 
     log.emit(json!({"at": now(), "event": "run_completed", "run_id": run_token, "collection": options.collection}))
         .map_err(|error| error.to_string())?;
+    if let Some(dashboard) = &mut dashboard {
+        dashboard.wait_for_exit()?;
+    }
     drop(dashboard);
     if let Some(progress) = &progress {
         progress.finish();
@@ -426,37 +430,18 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
     let operation = command_arguments
         .first()
         .map_or("help", |argument| argument.as_str());
-    let plan = if operation == "update" || operation == "upgrade" {
-        let path = script
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join("plans/update.toml");
-        plan::load(&path, "update")?
-    } else {
-        Plan {
-            version: 1,
-            collection: "host".to_owned(),
-            stages: vec![Stage {
-                id: operation.to_owned(),
-                title: operation.to_owned(),
-                help: host_help(operation).to_owned(),
-                tasks: Vec::new(),
-            }],
-        }
-    };
     if interactive_terminal() {
-        let mut dashboard = Dashboard::new("host", &plan.stages, &vec![false; plan.stages.len()])?;
+        let command = std::iter::once("mistborn".to_owned())
+            .chain(command_arguments.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut dashboard = CommandDashboard::new(operation, &command)?;
         let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
         File::create(&progress_path).map_err(|error| error.to_string())?;
-        let (succeeded, code) =
-            dashboard.run_host_command(&script, command_arguments, operation, &progress_path)?;
-        let output = dashboard.screen_contents();
+        let (succeeded, code) = dashboard.run(&script, command_arguments, &progress_path)?;
+        dashboard.wait_for_exit()?;
         drop(dashboard);
         let _ = fs::remove_file(&progress_path);
-        let output = output.trim_end();
-        if !output.is_empty() {
-            println!("{output}");
-        }
         if succeeded {
             Ok(())
         } else {
@@ -490,25 +475,6 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
                     .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
             ))
         }
-    }
-}
-
-fn host_help(operation: &str) -> &'static str {
-    match operation {
-        "status" => {
-            "Read-only overview of installed components, service health, and Tailscale connectivity."
-        }
-        "doctor" => "Runs read-only diagnostics. Review each warning before choosing a repair.",
-        "fix" => {
-            "Enables and starts Docker and Tailscale services. SSH and firewall settings are not changed."
-        }
-        "upgrade" | "update" => {
-            "Checks the latest stable release and refreshes the Mistborn Bootstrap tool."
-        }
-        "update-runtipi" => {
-            "Updates Runtipi core, app stores, and apps. App snapshots are created before updates."
-        }
-        _ => "Mistborn host-management command.",
     }
 }
 

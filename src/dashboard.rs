@@ -97,35 +97,31 @@ impl Dashboard {
         self.run_child(stage_index, command, progress_file)
     }
 
-    pub fn run_host_command(
-        &mut self,
-        script: &Path,
-        arguments: &[String],
-        operation: &str,
-        progress_file: &Path,
-    ) -> Result<(bool, Option<i32>), String> {
-        let mut command = CommandBuilder::new("bash");
-        command.arg(script);
-        for argument in arguments {
-            command.arg(argument);
+    pub fn wait_for_exit(&mut self) -> Result<(), String> {
+        let output = self.parser.screen().contents();
+        self.terminal
+            .draw(|frame| {
+                draw(
+                    frame,
+                    &self.collection,
+                    &self.stages,
+                    &self.stage_status,
+                    &self.task_status,
+                    self.active,
+                    &output,
+                    true,
+                )
+            })
+            .map_err(|error| error.to_string())?;
+        loop {
+            if event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
+                if let Event::Key(key) = event::read().map_err(|error| error.to_string())? {
+                    if key.kind == KeyEventKind::Press {
+                        return Ok(());
+                    }
+                }
+            }
         }
-        command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
-        command.env("MISTBORN_PROGRESS_FILE", progress_file);
-        command.env("MISTBORN_PROGRESS_STAGE", "bootstrap");
-        command.env(
-            "MISTBORN_BOOTSTRAP_VERSION",
-            format!("v{}", env!("CARGO_PKG_VERSION")),
-        );
-        let stage_index = self
-            .stages
-            .iter()
-            .position(|stage| stage.id == operation)
-            .unwrap_or(0);
-        self.run_child(stage_index, command, progress_file)
-    }
-
-    pub fn screen_contents(&self) -> String {
-        self.parser.screen().contents()
     }
 
     fn run_child(
@@ -199,6 +195,7 @@ impl Dashboard {
                         task_status,
                         active,
                         &output,
+                        false,
                     )
                 })
                 .map_err(|error| error.to_string())?;
@@ -253,6 +250,7 @@ impl Dashboard {
                             &self.task_status,
                             self.active,
                             &output,
+                            false,
                         )
                     })
                     .map_err(|error| error.to_string())?;
@@ -301,6 +299,7 @@ fn draw(
     task_status: &[Vec<StepStatus>],
     active: usize,
     terminal_output: &str,
+    finished: bool,
 ) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -416,7 +415,11 @@ fn draw(
         Gauge::default()
             .block(
                 Block::default()
-                    .title(" Overall progress ")
+                    .title(if finished {
+                        " Complete · press any key to exit "
+                    } else {
+                        " Overall progress "
+                    })
                     .borders(Borders::ALL),
             )
             .gauge_style(Style::default().fg(Color::Cyan).bg(Color::Black))
