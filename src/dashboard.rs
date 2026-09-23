@@ -97,7 +97,7 @@ impl Dashboard {
         self.run_child(stage_index, command, progress_file)
     }
 
-    pub fn wait_for_exit(&mut self) -> Result<(), String> {
+    pub fn wait_for_exit(&mut self, home_available: bool) -> Result<bool, String> {
         let output = self.parser.screen().contents();
         self.terminal
             .draw(|frame| {
@@ -110,6 +110,7 @@ impl Dashboard {
                     self.active,
                     &output,
                     true,
+                    home_available,
                 )
             })
             .map_err(|error| error.to_string())?;
@@ -117,7 +118,8 @@ impl Dashboard {
             if event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
                 if let Event::Key(key) = event::read().map_err(|error| error.to_string())? {
                     if key.kind == KeyEventKind::Press {
-                        return Ok(());
+                        return Ok(home_available
+                            && matches!(key.code, KeyCode::Char('h') | KeyCode::Home));
                     }
                 }
             }
@@ -196,6 +198,7 @@ impl Dashboard {
                         active,
                         &output,
                         false,
+                        false,
                     )
                 })
                 .map_err(|error| error.to_string())?;
@@ -251,6 +254,7 @@ impl Dashboard {
                             self.active,
                             &output,
                             false,
+                            false,
                         )
                     })
                     .map_err(|error| error.to_string())?;
@@ -300,6 +304,7 @@ fn draw(
     active: usize,
     terminal_output: &str,
     finished: bool,
+    home_available: bool,
 ) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -415,7 +420,9 @@ fn draw(
         Gauge::default()
             .block(
                 Block::default()
-                    .title(if finished {
+                    .title(if finished && home_available {
+                        " Complete · H/Home to command menu · any other key exits "
+                    } else if finished {
                         " Complete · press any key to exit "
                     } else {
                         " Overall progress "

@@ -400,15 +400,26 @@ fn execute(options: Options) -> Result<(), String> {
 
     log.emit(json!({"at": now(), "event": "run_completed", "run_id": run_token, "collection": options.collection}))
         .map_err(|error| error.to_string())?;
-    if let Some(dashboard) = &mut dashboard {
-        dashboard.wait_for_exit()?;
-    }
+    let home_available =
+        options.collection == "server" && Path::new("/usr/local/lib/mistborn/host.sh").is_file();
+    let return_to_home = if let Some(dashboard) = &mut dashboard {
+        dashboard.wait_for_exit(home_available)?
+    } else {
+        false
+    };
     drop(dashboard);
     if let Some(progress) = &progress {
         progress.finish();
     }
     println!("  state: {}", state_path.display());
     println!("  log:   {}", log_path.display());
+    if return_to_home {
+        execute_host(&[
+            "host".to_owned(),
+            "--script".to_owned(),
+            "/usr/local/lib/mistborn/host.sh".to_owned(),
+        ])?;
+    }
     Ok(())
 }
 
@@ -432,37 +443,47 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
         || command_arguments
             .first()
             .is_some_and(|command| matches!(command.as_str(), "help" | "-h" | "--help"));
-    if use_dashboard && shows_menu {
-        let Some(operation) = CommandDashboard::select_command()? else {
-            return Ok(());
-        };
-        command_arguments = vec![operation.to_owned()];
-    }
-    let command_arguments = command_arguments.as_slice();
-    let operation = command_arguments
-        .first()
-        .map_or("help", |argument| argument.as_str());
     if use_dashboard {
-        let command = std::iter::once("mistborn".to_owned())
-            .chain(command_arguments.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(" ");
-        let mut dashboard = CommandDashboard::new(operation, &command)?;
-        let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
-        File::create(&progress_path).map_err(|error| error.to_string())?;
-        let (succeeded, code) = dashboard.run(&script, command_arguments, &progress_path)?;
-        dashboard.wait_for_exit()?;
-        drop(dashboard);
-        let _ = fs::remove_file(&progress_path);
-        if succeeded {
-            Ok(())
-        } else {
-            Err(format!(
-                "mistborn {operation} failed with exit code {}",
-                code.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
-            ))
+        let mut menu_open = shows_menu;
+        loop {
+            if menu_open {
+                let Some(operation) = CommandDashboard::select_command()? else {
+                    return Ok(());
+                };
+                command_arguments = vec![operation.to_owned()];
+            }
+            let operation = command_arguments
+                .first()
+                .map_or("help", |argument| argument.as_str());
+            let command = std::iter::once("mistborn".to_owned())
+                .chain(command_arguments.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut dashboard = CommandDashboard::new(operation, &command)?;
+            let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
+            File::create(&progress_path).map_err(|error| error.to_string())?;
+            let (succeeded, code) = dashboard.run(&script, &command_arguments, &progress_path)?;
+            let return_to_home = dashboard.wait_for_exit()?;
+            drop(dashboard);
+            let _ = fs::remove_file(&progress_path);
+            if return_to_home {
+                menu_open = true;
+                continue;
+            }
+            return if succeeded {
+                Ok(())
+            } else {
+                Err(format!(
+                    "mistborn {operation} failed with exit code {}",
+                    code.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
+                ))
+            };
         }
     } else {
+        let command_arguments = command_arguments.as_slice();
+        let operation = command_arguments
+            .first()
+            .map_or("help", |argument| argument.as_str());
         let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
         File::create(&progress_path).map_err(|error| error.to_string())?;
         let status = Command::new("bash")

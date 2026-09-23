@@ -162,13 +162,13 @@ impl CommandDashboard {
         }
     }
 
-    pub fn wait_for_exit(&mut self) -> Result<(), String> {
+    pub fn wait_for_exit(&mut self) -> Result<bool, String> {
         self.draw()?;
         loop {
             if event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
                 if let Event::Key(key) = event::read().map_err(|error| error.to_string())? {
                     if key.kind == KeyEventKind::Press {
-                        return Ok(());
+                        return Ok(matches!(key.code, KeyCode::Char('h') | KeyCode::Home));
                     }
                 }
             }
@@ -397,8 +397,8 @@ fn draw(
     );
     let (ratio, footer) = match status {
         CommandStatus::Running => (0.0, "Running · Ctrl-C interrupts"),
-        CommandStatus::Complete => (1.0, "Complete · press any key to return"),
-        CommandStatus::Failed => (1.0, "Failed · press any key to return"),
+        CommandStatus::Complete => (1.0, "H/Home to command menu · any other key exits"),
+        CommandStatus::Failed => (1.0, "H/Home to command menu · any other key exits"),
     };
     frame.render_widget(
         Gauge::default()

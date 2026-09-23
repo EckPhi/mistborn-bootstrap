@@ -21,12 +21,12 @@ export function selectionFromURL(search, allowedReleases) {
   const value = (key, fallback) => params.has(key) ? params.get(key) : fallback;
   const collection = value("collection", "server");
   const downloader = value("downloader", "curl");
-  const release = value("release", allowedReleases[0] ?? "v0.5.5");
+  const release = value("release", allowedReleases[0] ?? "v0.5.6");
   const tcpPortsText = value("tcpPorts", "");
   return {
     collection: ["server", "shell"].includes(collection) ? collection : "server",
     downloader: ["curl", "wget"].includes(downloader) ? downloader : "curl",
-    release: allowedReleases.includes(release) ? release : (allowedReleases[0] ?? "v0.5.5"),
+    release: allowedReleases.includes(release) ? release : (allowedReleases[0] ?? "v0.5.6"),
     user: value("user", ""),
     yes: value("yes", "0") === "1",
     tailscaleSsh: value("tailscaleSsh", "0") === "1",
