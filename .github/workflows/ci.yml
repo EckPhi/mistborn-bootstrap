@@ -15,6 +15,8 @@ jobs:
         run: ./tools/build.sh
       - name: Test resumable runner
         run: cargo test --locked
+      - name: Test installer generator
+        run: node --test tests/site.test.mjs
       - name: Check generated scripts
         run: |
           git diff --exit-code -- dist/

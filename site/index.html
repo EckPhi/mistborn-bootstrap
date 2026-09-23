@@ -5,38 +5,81 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mistborn Bootstrap</title>
   <style>
-    :root { color-scheme: dark; --bg:#090f1d; --panel:#121c30; --line:#293852; --text:#edf4ff; --muted:#9cafc9; --accent:#2dd4bf; }
-    * { box-sizing:border-box } body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at top,#172642,var(--bg) 50%); color:var(--text); font:16px system-ui,sans-serif }
-    main { width:min(760px,calc(100% - 32px)); background:color-mix(in srgb,var(--panel) 92%,transparent); border:1px solid var(--line); border-radius:18px; padding:32px; box-shadow:0 24px 80px #0008 }
-    h1 { margin:0 0 8px; font-size:clamp(30px,6vw,48px) } p { color:var(--muted); line-height:1.6 }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin:28px 0 18px }
-    label { display:grid; gap:7px; color:var(--muted); font-size:14px } select,button { border:1px solid var(--line); border-radius:9px; padding:11px 12px; background:#0b1426; color:var(--text); font:inherit }
-    pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:18px; border:1px solid var(--line); border-radius:10px; background:#070d18; color:#b9f8eb; line-height:1.5 }
-    button { width:100%; cursor:pointer; background:var(--accent); color:#05241f; border:0; font-weight:750 } button:hover { filter:brightness(1.08) }
-    small { display:block; margin-top:14px; color:var(--muted) }
+    :root { color-scheme:dark; --bg:#090f1d; --panel:#121c30; --line:#293852; --text:#edf4ff; --muted:#9cafc9; --accent:#2dd4bf; --danger:#fda4af; --space:clamp(18px,3vw,32px) }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at top,#172642,var(--bg) 50%); color:var(--text); font:16px system-ui,sans-serif }
+    main { width:min(1120px,calc(100% - 24px)); margin:clamp(12px,5vh,56px) auto; background:color-mix(in srgb,var(--panel) 92%,transparent); border:1px solid var(--line); border-radius:18px; padding:var(--space); box-shadow:0 24px 80px #0008 }
+    h1 { margin:0 0 8px; font-size:clamp(30px,6vw,48px) } h2 { margin:0 0 18px; font-size:20px } p { color:var(--muted); line-height:1.6 }
+    .layout { display:grid; gap:var(--space); margin-top:28px }
+    .fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr)); gap:14px }
+    fieldset { min-width:0; margin:0 0 18px; padding:18px; border:1px solid var(--line); border-radius:12px }
+    legend { padding:0 8px; font-weight:700 }
+    label { display:grid; gap:7px; color:var(--muted); font-size:14px }
+    label.checkbox { display:flex; align-items:flex-start; gap:9px; color:var(--text); font-size:15px }
+    input,select,button { border:1px solid var(--line); border-radius:9px; padding:11px 12px; background:#0b1426; color:var(--text); font:inherit }
+    input[type="checkbox"] { width:18px; height:18px; margin:1px 0 0; padding:0; accent-color:var(--accent) }
+    .checks { display:grid; gap:13px }
+    .dependent { margin-top:16px; padding-top:16px; border-top:1px solid var(--line) }
+    [hidden] { display:none !important }
+    pre { min-height:110px; margin:0; white-space:pre-wrap; overflow-wrap:anywhere; padding:18px; border:1px solid var(--line); border-radius:10px; background:#070d18; color:#b9f8eb; line-height:1.5 }
+    button { width:100%; margin-top:12px; cursor:pointer; background:var(--accent); color:#05241f; border:0; font-weight:750 }
+    button:hover:not(:disabled) { filter:brightness(1.08) } button:disabled { cursor:not-allowed; opacity:.48 }
+    .summary { margin:18px 0; padding-left:20px; color:var(--muted); line-height:1.7 }
+    .warning,.notice { padding:12px 14px; border-radius:9px; line-height:1.5; font-size:14px }
+    .warning { margin:0 0 16px; border:1px solid #854d0e; background:#42200655; color:#fde68a }
+    .notice { margin-top:16px; border:1px solid var(--line); color:var(--muted) }
+    .error { min-height:24px; margin:8px 0; color:var(--danger); font-size:14px }
+    small { display:block; margin-top:14px; color:var(--muted) } code { color:#b9f8eb }
+    @media (min-width:860px) { .layout { grid-template-columns:minmax(0,1fr) minmax(360px,.9fr); align-items:start } .result { position:sticky; top:24px } }
   </style>
 </head>
 <body><main>
   <h1>Mistborn Bootstrap</h1>
-  <p>Build a one-line installer for a fresh server. Review the generated script before running it; the installer requires root access.</p>
-  <div class="grid">
-    <label>Collection<select id="collection"><option value="server">Server</option><option value="shell">Shell only</option></select></label>
-    <label>Downloader<select id="downloader"><option value="curl">curl</option><option value="wget">wget</option></select></label>
-    <label>Release<select id="release"><option value="v0.2.0">v0.2.0</option><option value="v0.1.0">v0.1.0</option><option value="main">Development (main)</option></select></label>
+  <p>Configure a one-line installer for a fresh Debian or Ubuntu server. Review the generated script before running it; installation requires root access.</p>
+  <div class="layout">
+    <form id="config" novalidate>
+      <fieldset>
+        <legend>Installer</legend>
+        <div class="fields">
+          <label>Collection<select id="collection"><option value="server">Server</option><option value="shell">Shell only</option></select></label>
+          <label>Downloader<select id="downloader"><option value="curl">curl</option><option value="wget">wget</option></select></label>
+          <label>Release<select id="release"><option value="v0.3.0">v0.3.0</option><option value="v0.2.0">v0.2.0</option><option value="v0.1.0">v0.1.0</option><option value="main">Development (main)</option></select></label>
+          <label>Target user<input id="target-user" autocomplete="username" placeholder="Detected by sudo"></label>
+        </div>
+        <div class="checks dependent"><label class="checkbox"><input id="yes" type="checkbox">Run without confirmation prompts (<code>--yes</code>)</label></div>
+      </fieldset>
+
+      <fieldset id="server-options">
+        <legend>Server options</legend>
+        <div class="checks">
+          <label class="checkbox"><input id="tailscale-ssh" type="checkbox">Enable Tailscale SSH</label>
+          <label class="checkbox"><input id="exit-node" type="checkbox">Advertise this server as an exit node</label>
+          <label class="checkbox"><input id="rclone" type="checkbox">Launch interactive rclone configuration</label>
+          <label class="checkbox"><input id="harden" type="checkbox">Enable SSH, firewall, and fail2ban hardening</label>
+        </div>
+        <div id="hardening-options" class="dependent" hidden>
+          <p class="warning"><strong>Prevent lockout:</strong> verify key-based SSH access in a second session before enabling hardening.</p>
+          <div class="fields">
+            <label>SSH port<input id="ssh-port" type="number" min="1" max="65535" value="22" inputmode="numeric"></label>
+            <label>Additional TCP ports<input id="tcp-ports" placeholder="80, 443" inputmode="numeric"></label>
+          </div>
+          <div class="checks dependent">
+            <label class="checkbox"><input id="disable-password" type="checkbox" checked>Disable SSH password authentication</label>
+            <label class="checkbox"><input id="tailscale-only" type="checkbox">Restrict SSH access to Tailscale</label>
+          </div>
+        </div>
+      </fieldset>
+    </form>
+
+    <section class="result" aria-live="polite">
+      <h2>Install command</h2>
+      <pre id="command"></pre>
+      <div id="error" class="error" role="alert"></div>
+      <button id="copy" type="button">Copy install command</button>
+      <ul id="summary" class="summary"></ul>
+      <div class="notice">Secrets are intentionally excluded. For unattended Tailscale enrollment, place a one-off auth key on the server and pass <code>TAILSCALE_AUTH_KEY=file:/path/to/key</code> manually.</div>
+      <small>Tip: download and inspect the generated script before executing it as root.</small>
+    </section>
   </div>
-  <pre id="command"></pre>
-  <button id="copy">Copy install command</button>
-  <small>Tip: replace <code>| sudo bash</code> with a download to inspect the script first.</small>
-</main><script>
-  const fields = [...document.querySelectorAll("select")];
-  const output = document.querySelector("#command");
-  function render() {
-    const collection = document.querySelector("#collection").value;
-    const release = document.querySelector("#release").value;
-    const url = `https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/${release}/dist/${collection}.sh`;
-    output.textContent = document.querySelector("#downloader").value === "curl" ? `curl -fsSL ${url} | sudo bash` : `wget -qO- ${url} | sudo bash`;
-  }
-  fields.forEach(field => field.addEventListener("change", render));
-  document.querySelector("#copy").addEventListener("click", async event => { await navigator.clipboard.writeText(output.textContent); event.currentTarget.textContent = "Copied"; setTimeout(() => event.currentTarget.textContent = "Copy install command", 1200); });
-  render();
-</script></body></html>
+</main><script type="module" src="./app.mjs"></script></body>
+</html>
