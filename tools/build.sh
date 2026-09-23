@@ -13,6 +13,7 @@ build_collection() {
     printf '%s\n' '#!/usr/bin/env bash' 'set -Eeuo pipefail' \
       'trap '\''ui_error "Setup failed on line $LINENO"'\'' ERR' \
       'MISTBORN_DRY_RUN=0' 'MISTBORN_YES=0'
+    printf "export MISTBORN_TOOL_B64='%s'\n" "$(base64 <"$root/assets/mistborn" | tr -d '\n')"
     cat "$root/lib/ui.sh" "$root/lib/system.sh"
     while IFS= read -r module; do
       [[ -z "$module" || "$module" == \#* ]] && continue

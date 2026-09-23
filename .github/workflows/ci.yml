@@ -17,4 +17,5 @@ jobs:
         run: |
           git diff --exit-code -- dist/
           shellcheck -x lib/*.sh modules/*.sh tools/*.sh dist/*.sh
+          shellcheck assets/mistborn
           for script in dist/*.sh; do sudo bash "$script" --dry-run --yes --user runner; done

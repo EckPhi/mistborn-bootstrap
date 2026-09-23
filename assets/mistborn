@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+RUNTIPI_PATH="${RUNTIPI_PATH:-/opt/runtipi}"
+
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+runtipi_cli() {
+  if [[ -x "$RUNTIPI_PATH/runtipi-cli" ]]; then printf '%s\n' "$RUNTIPI_PATH/runtipi-cli"
+  elif command -v runtipi-cli >/dev/null; then command -v runtipi-cli
+  else die "runtipi-cli not found under $RUNTIPI_PATH or PATH"; fi
+}
+run_runtipi() { "$(runtipi_cli)" "$@"; }
+app_refs() {
+  local store app
+  for store in "$RUNTIPI_PATH"/apps/*; do
+    [[ -d "$store" ]] || continue
+    for app in "$store"/*; do [[ -d "$app" ]] && printf '%s:%s\n' "$(basename "$app")" "$(basename "$store")"; done
+  done
+}
+snapshot_apps() { local ref; while IFS= read -r ref; do run_runtipi app backup "$ref"; done; }
+doctor() {
+  local failures=0
+  printf 'Mistborn host diagnostics\n'
+  for command in docker tailscale rclone ufw fail2ban-client; do
+    if command -v "$command" >/dev/null 2>&1; then printf '  PASS  %s installed\n' "$command"; else printf '  WARN  %s missing\n' "$command"; fi
+  done
+  if [[ -d "$RUNTIPI_PATH" ]]; then printf '  PASS  Runtipi directory: %s\n' "$RUNTIPI_PATH"; else printf '  FAIL  Runtipi directory missing\n'; failures=1; fi
+  if docker info >/dev/null 2>&1; then printf '  PASS  Docker daemon reachable\n'; else printf '  FAIL  Docker daemon unreachable\n'; failures=1; fi
+  if systemctl is-active --quiet fail2ban; then printf '  PASS  fail2ban active\n'; else printf '  WARN  fail2ban inactive\n'; fi
+  if ufw status 2>/dev/null | grep -q 'Status: active'; then printf '  PASS  UFW active\n'; else printf '  WARN  UFW inactive\n'; fi
+  return "$failures"
+}
+update_apps() {
+  local backup=1 refs=() ref
+  [[ "${1:-}" == --no-backup ]] && { backup=0; shift; }
+  if [[ $# -gt 0 ]]; then refs=("$@"); else mapfile -t refs < <(app_refs); fi
+  for ref in "${refs[@]}"; do [[ "$backup" == 1 ]] && run_runtipi app backup "$ref"; run_runtipi app update "$ref"; done
+}
+usage() {
+  cat <<'EOF'
+Usage: mistborn COMMAND [ARGS]
+  doctor                       audit Docker, Runtipi, Tailscale, rclone and security
+  security-status              show SSH, UFW, fail2ban and Tailscale status
+  tailscale-status             show Tailscale status
+  rclone-config                open rclone's configuration UI
+  update-apps [--no-backup] [APP:STORE ...]
+  update-core [--no-backup] [VERSION]
+  update-appstores
+EOF
+}
+case "${1:-}" in
+  doctor) doctor ;;
+  security-status) sshd -T 2>/dev/null | grep -E 'passwordauthentication|permitrootlogin|^port'; ufw status verbose; fail2ban-client status sshd || true; tailscale status || true ;;
+  tailscale-status) tailscale status ;;
+  rclone-config) rclone config ;;
+  update-apps) shift; update_apps "$@" ;;
+  update-core) shift; backup=1; [[ "${1:-}" == --no-backup ]] && { backup=0; shift; }; [[ "$backup" == 1 ]] && snapshot_apps < <(app_refs); run_runtipi update "${1:-latest}" ;;
+  update-appstores) run_runtipi appstore update ;;
+  -h|--help|'') usage ;;
+  *) die "unknown command: $1" ;;
+esac

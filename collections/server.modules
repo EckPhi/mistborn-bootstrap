@@ -1,5 +1,8 @@
 common
+docker
 zsh
 tailscale
 runtipi
-companion
+rclone
+security
+toolset

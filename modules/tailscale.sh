@@ -11,10 +11,16 @@ module_tailscale_apply() {
   else
     curl -fsSL https://tailscale.com/install.sh | sh
   fi
+  local args=(up)
+  [[ "${MISTBORN_TAILSCALE_SSH:-0}" == 1 ]] && args+=(--ssh)
+  [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]] && args+=(--advertise-exit-node)
   if [[ -n "${TAILSCALE_AUTH_KEY:-}" ]]; then
-    mistborn_run tailscale up --auth-key "$TAILSCALE_AUTH_KEY"
+    args+=(--auth-key "$TAILSCALE_AUTH_KEY")
+    mistborn_run tailscale "${args[@]}"
   else
-    ui_warn "Run 'sudo tailscale up' to authenticate"
+    if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then ui_info "Would run tailscale ${args[*]}"
+    elif [[ -t 0 ]]; then tailscale "${args[@]}"
+    else ui_warn "Run 'sudo tailscale ${args[*]}' to authenticate"; fi
   fi
   ui_success "$module_tailscale_description"
 }
