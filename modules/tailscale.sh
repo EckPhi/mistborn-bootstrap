@@ -18,9 +18,7 @@ module_tailscale_apply() {
     args+=(--auth-key "$TAILSCALE_AUTH_KEY")
     mistborn_run tailscale "${args[@]}"
   else
-    if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then ui_info "Would run tailscale ${args[*]}"
-    elif [[ -t 0 ]]; then tailscale "${args[@]}"
-    else ui_warn "Run 'sudo tailscale ${args[*]}' to authenticate"; fi
+    mistborn_run_interactive tailscale "${args[@]}"
   fi
   ui_success "$module_tailscale_description"
 }

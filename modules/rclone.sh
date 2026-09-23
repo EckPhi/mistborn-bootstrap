@@ -8,13 +8,7 @@ module_rclone_apply() {
   ui_step "$module_rclone_description"
   mistborn_apt_install rclone
   if [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
-    if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
-      ui_info "Would launch rclone config for $user"
-    elif [[ -t 0 ]]; then
-      sudo -H -u "$user" rclone config
-    else
-      ui_warn "rclone config needs a terminal; run it later as $user"
-    fi
+    mistborn_run_interactive sudo -H -u "$user" rclone config
   fi
   ui_success "$module_rclone_description"
 }
