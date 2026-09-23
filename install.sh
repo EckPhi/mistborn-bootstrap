@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly MISTBORN_DEFAULT_VERSION="v0.5.1"
+readonly MISTBORN_DEFAULT_VERSION="v0.5.2"
 readonly MISTBORN_REPOSITORY="EckPhi/mistborn-bootstrap"
 
 fail() {
@@ -41,13 +41,14 @@ raw_base="${MISTBORN_RAW_BASE_URL:-https://raw.githubusercontent.com/$MISTBORN_R
 asset="mistborn-bootstrap-linux-$architecture"
 work_dir="$(mktemp -d)"
 trap 'rm -rf -- "$work_dir"' EXIT
-mkdir -p "$work_dir/collections" "$work_dir/dist"
+mkdir -p "$work_dir/collections" "$work_dir/dist" "$work_dir/plans"
 
 printf 'Downloading Mistborn Bootstrap %s for %s...\n' "$version" "$architecture"
 download "$release_base/$asset" "$work_dir/$asset"
 download "$release_base/SHA256SUMS" "$work_dir/SHA256SUMS"
 download "$raw_base/collections/$collection.modules" "$work_dir/collections/$collection.modules"
 download "$raw_base/dist/$collection.sh" "$work_dir/dist/$collection.sh"
+download "$raw_base/plans/$collection.toml" "$work_dir/plans/$collection.toml"
 
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
 checksum_line="$(awk -v asset="$asset" '$2 == asset || $2 == "*" asset { print }' "$work_dir/SHA256SUMS")"

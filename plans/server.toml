@@ -1,0 +1,152 @@
+version = 1
+collection = "server"
+
+[[stages]]
+id = "common"
+title = "System prerequisites"
+help = "Refreshes apt metadata and installs the tools used by later stages."
+[[stages.tasks]]
+id = "apt-index"
+title = "Refresh package metadata"
+action = "apt-get update"
+weight = 1
+[[stages.tasks]]
+id = "base-packages"
+title = "Install prerequisite packages"
+action = "apt-get install ca-certificates curl git"
+weight = 1
+
+[[stages]]
+id = "docker"
+title = "Docker Engine"
+help = "Installs Docker when missing and enables its system service."
+[[stages.tasks]]
+id = "engine"
+title = "Install Docker Engine"
+action = "apt-get install docker.io"
+weight = 2
+[[stages.tasks]]
+id = "service"
+title = "Enable and start Docker"
+action = "systemctl enable --now docker"
+weight = 1
+
+[[stages]]
+id = "zsh"
+title = "Zsh and plugins"
+help = "Installs Zsh, Oh My Zsh, Powerlevel10k, and configures the target user."
+[[stages.tasks]]
+id = "packages"
+title = "Install Zsh and Git"
+action = "apt-get install zsh git"
+weight = 1
+[[stages.tasks]]
+id = "oh-my-zsh"
+title = "Install or detect Oh My Zsh"
+action = "git clone ohmyzsh/ohmyzsh"
+weight = 2
+[[stages.tasks]]
+id = "powerlevel10k"
+title = "Install or detect Powerlevel10k"
+action = "git clone romkatv/powerlevel10k"
+weight = 2
+[[stages.tasks]]
+id = "configuration"
+title = "Configure the target user's shell"
+action = "configure zsh and .zshrc"
+weight = 1
+
+[[stages]]
+id = "tailscale"
+title = "Tailscale"
+help = "Installs Tailscale, configures optional exit-node forwarding, then joins the tailnet."
+[[stages.tasks]]
+id = "install"
+title = "Install or detect Tailscale"
+action = "install Tailscale package"
+weight = 2
+[[stages.tasks]]
+id = "forwarding"
+title = "Configure exit-node forwarding"
+action = "configure IPv4 and IPv6 forwarding"
+weight = 1
+[[stages.tasks]]
+id = "connect"
+title = "Connect to the tailnet"
+action = "tailscale up"
+weight = 2
+[[stages.tasks]]
+id = "auto-update"
+title = "Configure automatic updates"
+action = "tailscale set --auto-update"
+weight = 1
+
+[[stages]]
+id = "runtipi"
+title = "Runtipi"
+help = "Installs Runtipi if its CLI is not already present."
+[[stages.tasks]]
+id = "install"
+title = "Install or detect Runtipi"
+action = "run official Runtipi installer"
+weight = 3
+
+[[stages]]
+id = "rclone"
+title = "rclone"
+help = "Installs rclone and opens its interactive configuration when requested."
+[[stages.tasks]]
+id = "package"
+title = "Install rclone"
+action = "apt-get install rclone"
+weight = 1
+[[stages.tasks]]
+id = "configuration"
+title = "Configure rclone"
+action = "rclone config"
+weight = 1
+
+[[stages]]
+id = "security"
+title = "Security hardening"
+help = "Optional SSH, UFW, and fail2ban setup. SSH changes are validated before restart."
+[[stages.tasks]]
+id = "packages"
+title = "Install UFW and fail2ban"
+action = "apt-get install ufw fail2ban"
+weight = 1
+[[stages.tasks]]
+id = "ssh"
+title = "Configure and validate SSH"
+action = "configure sshd and sshd -t"
+weight = 2
+[[stages.tasks]]
+id = "firewall"
+title = "Configure UFW rules"
+action = "configure ufw policy and allowed ports"
+weight = 2
+[[stages.tasks]]
+id = "fail2ban"
+title = "Enable fail2ban"
+action = "systemctl enable --now fail2ban"
+weight = 1
+[[stages.tasks]]
+id = "tailscale-only"
+title = "Apply Tailscale-only SSH rules"
+action = "configure Tailscale SSH and UFW interface rules"
+weight = 1
+
+[[stages]]
+id = "toolset"
+title = "Mistborn host tool"
+help = "Installs the local command and persistent Ratatui runner."
+[[stages.tasks]]
+id = "runner"
+title = "Install the Ratatui runner"
+action = "install mistborn-bootstrap"
+weight = 2
+[[stages.tasks]]
+id = "command"
+title = "Install the mistborn command"
+action = "install host command and update plan"
+weight = 1

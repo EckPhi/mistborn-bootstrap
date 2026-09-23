@@ -20,6 +20,7 @@ build_collection() {
     done <"$root/collections/$collection.modules"
     printf ' )\n'
     printf "export MISTBORN_TOOL_B64='%s'\n" "$(base64 <"$root/assets/mistborn" | tr -d '\n')"
+    printf "export MISTBORN_UPDATE_PLAN_B64='%s'\n" "$(base64 <"$root/plans/update.toml" | tr -d '\n')"
     cat "$root/lib/ui.sh" "$root/lib/system.sh"
     while IFS= read -r module; do
       [[ -z "$module" || "$module" == \#* ]] && continue

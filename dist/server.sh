@@ -5,7 +5,8 @@ MISTBORN_DRY_RUN=0
 MISTBORN_YES=0
 MISTBORN_ONLY=""
 MISTBORN_MODULES=( common docker zsh tailscale runtipi rclone security toolset )
-export MISTBORN_TOOL_B64='IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLUVldW8gcGlwZWZhaWwKClJVTlRJUElfUEFUSD0iJHtSVU5USVBJX1BBVEg6LS9vcHQvcnVudGlwaX0iCgpkaWUoKSB7IHByaW50ZiAnZXJyb3I6ICVzXG4nICIkKiIgPiYyOyBleGl0IDE7IH0KcnVudGlwaV9jbGkoKSB7CiAgaWYgW1sgLXggIiRSVU5USVBJX1BBVEgvcnVudGlwaS1jbGkiIF1dOyB0aGVuIHByaW50ZiAnJXNcbicgIiRSVU5USVBJX1BBVEgvcnVudGlwaS1jbGkiCiAgZWxpZiBjb21tYW5kIC12IHJ1bnRpcGktY2xpID4vZGV2L251bGw7IHRoZW4gY29tbWFuZCAtdiBydW50aXBpLWNsaQogIGVsc2UgZGllICJydW50aXBpLWNsaSBub3QgZm91bmQgdW5kZXIgJFJVTlRJUElfUEFUSCBvciBQQVRIIjsgZmkKfQpydW5fcnVudGlwaSgpIHsgIiQocnVudGlwaV9jbGkpIiAiJEAiOyB9CmFwcF9yZWZzKCkgewogIGxvY2FsIHN0b3JlIGFwcAogIGZvciBzdG9yZSBpbiAiJFJVTlRJUElfUEFUSCIvYXBwcy8qOyBkbwogICAgW1sgLWQgIiRzdG9yZSIgXV0gfHwgY29udGludWUKICAgIGZvciBhcHAgaW4gIiRzdG9yZSIvKjsgZG8gW1sgLWQgIiRhcHAiIF1dICYmIHByaW50ZiAnJXM6JXNcbicgIiQoYmFzZW5hbWUgIiRhcHAiKSIgIiQoYmFzZW5hbWUgIiRzdG9yZSIpIjsgZG9uZQogIGRvbmUKfQpzbmFwc2hvdF9hcHBzKCkgeyBsb2NhbCByZWY7IHdoaWxlIElGUz0gcmVhZCAtciByZWY7IGRvIHJ1bl9ydW50aXBpIGFwcCBiYWNrdXAgIiRyZWYiOyBkb25lOyB9CmRvY3RvcigpIHsKICBsb2NhbCBmYWlsdXJlcz0wCiAgcHJpbnRmICdNaXN0Ym9ybiBob3N0IGRpYWdub3N0aWNzXG4nCiAgZm9yIGNvbW1hbmQgaW4gZG9ja2VyIHRhaWxzY2FsZSByY2xvbmUgdWZ3IGZhaWwyYmFuLWNsaWVudDsgZG8KICAgIGlmIGNvbW1hbmQgLXYgIiRjb21tYW5kIiA+L2Rldi9udWxsIDI+JjE7IHRoZW4gcHJpbnRmICcgIFBBU1MgICVzIGluc3RhbGxlZFxuJyAiJGNvbW1hbmQiOyBlbHNlIHByaW50ZiAnICBXQVJOICAlcyBtaXNzaW5nXG4nICIkY29tbWFuZCI7IGZpCiAgZG9uZQogIGlmIFtbIC1kICIkUlVOVElQSV9QQVRIIiBdXTsgdGhlbiBwcmludGYgJyAgUEFTUyAgUnVudGlwaSBkaXJlY3Rvcnk6ICVzXG4nICIkUlVOVElQSV9QQVRIIjsgZWxzZSBwcmludGYgJyAgRkFJTCAgUnVudGlwaSBkaXJlY3RvcnkgbWlzc2luZ1xuJzsgZmFpbHVyZXM9MTsgZmkKICBpZiBkb2NrZXIgaW5mbyA+L2Rldi9udWxsIDI+JjE7IHRoZW4gcHJpbnRmICcgIFBBU1MgIERvY2tlciBkYWVtb24gcmVhY2hhYmxlXG4nOyBlbHNlIHByaW50ZiAnICBGQUlMICBEb2NrZXIgZGFlbW9uIHVucmVhY2hhYmxlXG4nOyBmYWlsdXJlcz0xOyBmaQogIGlmIHN5c3RlbWN0bCBpcy1hY3RpdmUgLS1xdWlldCBmYWlsMmJhbjsgdGhlbiBwcmludGYgJyAgUEFTUyAgZmFpbDJiYW4gYWN0aXZlXG4nOyBlbHNlIHByaW50ZiAnICBXQVJOICBmYWlsMmJhbiBpbmFjdGl2ZVxuJzsgZmkKICBpZiB1Zncgc3RhdHVzIDI+L2Rldi9udWxsIHwgZ3JlcCAtcSAnU3RhdHVzOiBhY3RpdmUnOyB0aGVuIHByaW50ZiAnICBQQVNTICBVRlcgYWN0aXZlXG4nOyBlbHNlIHByaW50ZiAnICBXQVJOICBVRlcgaW5hY3RpdmVcbic7IGZpCiAgcmV0dXJuICIkZmFpbHVyZXMiCn0Kc3RhdHVzKCkgewogIGRvY3RvciB8fCB0cnVlCiAgcHJpbnRmICdcblNlcnZpY2Ugc3RhdHVzXG4nCiAgbG9jYWwgc2VydmljZQogIGZvciBzZXJ2aWNlIGluIGRvY2tlciB0YWlsc2NhbGVkIGZhaWwyYmFuOyBkbwogICAgaWYgISBjb21tYW5kIC12IHN5c3RlbWN0bCA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgICAgcHJpbnRmICcgIElORk8gIHN5c3RlbWQgdW5hdmFpbGFibGU7IGNhbm5vdCBpbnNwZWN0ICVzXG4nICIkc2VydmljZSIKICAgICAgYnJlYWsKICAgIGVsaWYgc3lzdGVtY3RsIGlzLWFjdGl2ZSAtLXF1aWV0ICIkc2VydmljZSI7IHRoZW4KICAgICAgcHJpbnRmICcgIFBBU1MgICVzIGFjdGl2ZVxuJyAiJHNlcnZpY2UiCiAgICBlbHNlCiAgICAgIHByaW50ZiAnICBXQVJOICAlcyBpbmFjdGl2ZVxuJyAiJHNlcnZpY2UiCiAgICBmaQogIGRvbmUKICBpZiBjb21tYW5kIC12IHRhaWxzY2FsZSA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIHByaW50ZiAnXG5UYWlsc2NhbGVcbicKICAgIHRhaWxzY2FsZSBzdGF0dXMgfHwgdHJ1ZQogIGZpCn0KZml4X3NlcnZpY2VzKCkgewogIGxvY2FsIHNlcnZpY2UgY2hhbmdlZD0wCiAgW1sgIiRFVUlEIiA9PSAwIF1dIHx8IGRpZSAicnVuICdtaXN0Ym9ybiBmaXgnIHdpdGggc3VkbyIKICBjb21tYW5kIC12IHN5c3RlbWN0bCA+L2Rldi9udWxsIDI+JjEgfHwgZGllICJzeXN0ZW1kIGlzIHJlcXVpcmVkIHRvIHJlcGFpciBzZXJ2aWNlcyIKICBmb3Igc2VydmljZSBpbiBkb2NrZXIgdGFpbHNjYWxlZDsgZG8KICAgIGlmICEgY29tbWFuZCAtdiAiJHNlcnZpY2UiID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgICBwcmludGYgJyAgU0tJUCAgJXMgaXMgbm90IGluc3RhbGxlZFxuJyAiJHNlcnZpY2UiCiAgICAgIGNvbnRpbnVlCiAgICBmaQogICAgaWYgc3lzdGVtY3RsIGlzLWFjdGl2ZSAtLXF1aWV0ICIkc2VydmljZSIgJiYgc3lzdGVtY3RsIGlzLWVuYWJsZWQgLS1xdWlldCAiJHNlcnZpY2UiOyB0aGVuCiAgICAgIHByaW50ZiAnICBQQVNTICAlcyBpcyBhbHJlYWR5IGVuYWJsZWQgYW5kIGFjdGl2ZVxuJyAiJHNlcnZpY2UiCiAgICBlbHNlCiAgICAgIHByaW50ZiAnICBGSVggICBlbmFibGluZyBhbmQgc3RhcnRpbmcgJXNcbicgIiRzZXJ2aWNlIgogICAgICBzeXN0ZW1jdGwgZW5hYmxlIC0tbm93ICIkc2VydmljZSIKICAgICAgY2hhbmdlZD0xCiAgICBmaQogIGRvbmUKICBpZiBbWyAiJGNoYW5nZWQiID09IDAgXV07IHRoZW4gcHJpbnRmICdDb3JlIHNlcnZpY2VzIGFyZSBhbHJlYWR5IGhlYWx0aHkuXG4nOyBmaQogIHByaW50ZiAnVUZXIGFuZCBTU0ggc2V0dGluZ3MgYXJlIGxlZnQgdW5jaGFuZ2VkOyByZXZpZXcgdGhlbSB3aXRoIG1pc3Rib3JuIHNlY3VyaXR5LXN0YXR1cy5cbicKfQp1cGRhdGVfYWxsKCkgewogIHByaW50ZiAnVXBkYXRpbmcgUnVudGlwaSBjb3JlICh3aXRoIGFwcCBzbmFwc2hvdHMpLi4uXG4nCiAgc25hcHNob3RfYXBwcyA8IDwoYXBwX3JlZnMpCiAgcnVuX3J1bnRpcGkgdXBkYXRlIGxhdGVzdAogIHByaW50ZiAnXG5VcGRhdGluZyBhcHAgc3RvcmVzLi4uXG4nCiAgcnVuX3J1bnRpcGkgYXBwc3RvcmUgdXBkYXRlCiAgcHJpbnRmICdcblVwZGF0aW5nIGFwcHMgKHdpdGggc25hcHNob3RzKS4uLlxuJwogIHVwZGF0ZV9hcHBzCiAgcHJpbnRmICdcbk1pc3Rib3JuIHVwZGF0ZXMgY29tcGxldGUuXG4nCn0KdXBkYXRlX2FwcHMoKSB7CiAgbG9jYWwgYmFja3VwPTEgcmVmcz0oKSByZWYKICBbWyAiJHsxOi19IiA9PSAtLW5vLWJhY2t1cCBdXSAmJiB7IGJhY2t1cD0wOyBzaGlmdDsgfQogIGlmIFtbICQjIC1ndCAwIF1dOyB0aGVuIHJlZnM9KCIkQCIpOyBlbHNlIG1hcGZpbGUgLXQgcmVmcyA8IDwoYXBwX3JlZnMpOyBmaQogIGZvciByZWYgaW4gIiR7cmVmc1tAXX0iOyBkbyBbWyAiJGJhY2t1cCIgPT0gMSBdXSAmJiBydW5fcnVudGlwaSBhcHAgYmFja3VwICIkcmVmIjsgcnVuX3J1bnRpcGkgYXBwIHVwZGF0ZSAiJHJlZiI7IGRvbmUKfQp1c2FnZSgpIHsKICBjYXQgPDwnRU9GJwpVc2FnZTogbWlzdGJvcm4gQ09NTUFORCBbQVJHU10KICBzdGF0dXMgICAgICAgICAgICAgICAgICAgICAgIHNob3cgaW5zdGFsbGF0aW9uLCBzZXJ2aWNlIGFuZCBUYWlsc2NhbGUgc3RhdHVzCiAgZG9jdG9yICAgICAgICAgICAgICAgICAgICAgICBhdWRpdCBEb2NrZXIsIFJ1bnRpcGksIFRhaWxzY2FsZSwgcmNsb25lIGFuZCBzZWN1cml0eQogIGZpeCAgICAgICAgICAgICAgICAgICAgICAgICAgZW5hYmxlIGFuZCBzdGFydCBpbnN0YWxsZWQgRG9ja2VyL1RhaWxzY2FsZSBzZXJ2aWNlcwogIHNlY3VyaXR5LXN0YXR1cyAgICAgICAgICAgICAgc2hvdyBTU0gsIFVGVywgZmFpbDJiYW4gYW5kIFRhaWxzY2FsZSBzdGF0dXMKICB0YWlsc2NhbGUtc3RhdHVzICAgICAgICAgICAgIHNob3cgVGFpbHNjYWxlIHN0YXR1cwogIHJjbG9uZS1jb25maWcgICAgICAgICAgICAgICAgb3BlbiByY2xvbmUncyBjb25maWd1cmF0aW9uIFVJCiAgdXBkYXRlLWFwcHMgWy0tbm8tYmFja3VwXSBbQVBQOlNUT1JFIC4uLl0KICB1cGRhdGUtY29yZSBbLS1uby1iYWNrdXBdIFtWRVJTSU9OXQogIHVwZGF0ZS1hcHBzdG9yZXMKICB1cGRhdGUgICAgICAgICAgICAgICAgICAgICAgIHVwZGF0ZSBSdW50aXBpIGNvcmUsIGFwcCBzdG9yZXMgYW5kIGFwcHMgKHdpdGggYmFja3VwcykKRU9GCn0KY2FzZSAiJHsxOi19IiBpbgogIHN0YXR1cykgc3RhdHVzIDs7CiAgZG9jdG9yKSBkb2N0b3IgOzsKICBmaXgpIGZpeF9zZXJ2aWNlcyA7OwogIHNlY3VyaXR5LXN0YXR1cykgc3NoZCAtVCAyPi9kZXYvbnVsbCB8IGdyZXAgLUUgJ3Bhc3N3b3JkYXV0aGVudGljYXRpb258cGVybWl0cm9vdGxvZ2lufF5wb3J0JzsgdWZ3IHN0YXR1cyB2ZXJib3NlOyBmYWlsMmJhbi1jbGllbnQgc3RhdHVzIHNzaGQgfHwgdHJ1ZTsgdGFpbHNjYWxlIHN0YXR1cyB8fCB0cnVlIDs7CiAgdGFpbHNjYWxlLXN0YXR1cykgdGFpbHNjYWxlIHN0YXR1cyA7OwogIHJjbG9uZS1jb25maWcpIHJjbG9uZSBjb25maWcgOzsKICB1cGRhdGUtYXBwcykgc2hpZnQ7IHVwZGF0ZV9hcHBzICIkQCIgOzsKICB1cGRhdGUtY29yZSkgc2hpZnQ7IGJhY2t1cD0xOyBbWyAiJHsxOi19IiA9PSAtLW5vLWJhY2t1cCBdXSAmJiB7IGJhY2t1cD0wOyBzaGlmdDsgfTsgW1sgIiRiYWNrdXAiID09IDEgXV0gJiYgc25hcHNob3RfYXBwcyA8IDwoYXBwX3JlZnMpOyBydW5fcnVudGlwaSB1cGRhdGUgIiR7MTotbGF0ZXN0fSIgOzsKICB1cGRhdGUtYXBwc3RvcmVzKSBydW5fcnVudGlwaSBhcHBzdG9yZSB1cGRhdGUgOzsKICB1cGRhdGUpIHVwZGF0ZV9hbGwgOzsKICAtaHwtLWhlbHB8JycpIHVzYWdlIDs7CiAgKikgZGllICJ1bmtub3duIGNvbW1hbmQ6ICQxIiA7Owplc2FjCg=='
+export MISTBORN_TOOL_B64='IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLUVldW8gcGlwZWZhaWwKClJVTlRJUElfUEFUSD0iJHtSVU5USVBJX1BBVEg6LS9vcHQvcnVudGlwaX0iCgpkaWUoKSB7IHByaW50ZiAnZXJyb3I6ICVzXG4nICIkKiIgPiYyOyBleGl0IDE7IH0KdGFza19ldmVudCgpIHsKICBbWyAtbiAiJHtNSVNUQk9STl9QUk9HUkVTU19GSUxFOi19IiBdXSB8fCByZXR1cm4gMAogIHByaW50ZiAnJXNcdCVzXHQlc1xuJyAiJDEiICIkMiIgIiQzIiA+PiIkTUlTVEJPUk5fUFJPR1JFU1NfRklMRSIgfHwgdHJ1ZQp9CnJ1bnRpcGlfY2xpKCkgewogIGlmIFtbIC14ICIkUlVOVElQSV9QQVRIL3J1bnRpcGktY2xpIiBdXTsgdGhlbiBwcmludGYgJyVzXG4nICIkUlVOVElQSV9QQVRIL3J1bnRpcGktY2xpIgogIGVsaWYgY29tbWFuZCAtdiBydW50aXBpLWNsaSA+L2Rldi9udWxsOyB0aGVuIGNvbW1hbmQgLXYgcnVudGlwaS1jbGkKICBlbHNlIGRpZSAicnVudGlwaS1jbGkgbm90IGZvdW5kIHVuZGVyICRSVU5USVBJX1BBVEggb3IgUEFUSCI7IGZpCn0KcnVuX3J1bnRpcGkoKSB7ICIkKHJ1bnRpcGlfY2xpKSIgIiRAIjsgfQphcHBfcmVmcygpIHsKICBsb2NhbCBzdG9yZSBhcHAKICBmb3Igc3RvcmUgaW4gIiRSVU5USVBJX1BBVEgiL2FwcHMvKjsgZG8KICAgIFtbIC1kICIkc3RvcmUiIF1dIHx8IGNvbnRpbnVlCiAgICBmb3IgYXBwIGluICIkc3RvcmUiLyo7IGRvIFtbIC1kICIkYXBwIiBdXSAmJiBwcmludGYgJyVzOiVzXG4nICIkKGJhc2VuYW1lICIkYXBwIikiICIkKGJhc2VuYW1lICIkc3RvcmUiKSI7IGRvbmUKICBkb25lCn0Kc25hcHNob3RfYXBwcygpIHsgbG9jYWwgcmVmOyB3aGlsZSBJRlM9IHJlYWQgLXIgcmVmOyBkbyBydW5fcnVudGlwaSBhcHAgYmFja3VwICIkcmVmIjsgZG9uZTsgfQpkb2N0b3IoKSB7CiAgbG9jYWwgZmFpbHVyZXM9MAogIHByaW50ZiAnTWlzdGJvcm4gaG9zdCBkaWFnbm9zdGljc1xuJwogIGZvciBjb21tYW5kIGluIGRvY2tlciB0YWlsc2NhbGUgcmNsb25lIHVmdyBmYWlsMmJhbi1jbGllbnQ7IGRvCiAgICBpZiBjb21tYW5kIC12ICIkY29tbWFuZCIgPi9kZXYvbnVsbCAyPiYxOyB0aGVuIHByaW50ZiAnICBQQVNTICAlcyBpbnN0YWxsZWRcbicgIiRjb21tYW5kIjsgZWxzZSBwcmludGYgJyAgV0FSTiAgJXMgbWlzc2luZ1xuJyAiJGNvbW1hbmQiOyBmaQogIGRvbmUKICBpZiBbWyAtZCAiJFJVTlRJUElfUEFUSCIgXV07IHRoZW4gcHJpbnRmICcgIFBBU1MgIFJ1bnRpcGkgZGlyZWN0b3J5OiAlc1xuJyAiJFJVTlRJUElfUEFUSCI7IGVsc2UgcHJpbnRmICcgIEZBSUwgIFJ1bnRpcGkgZGlyZWN0b3J5IG1pc3Npbmdcbic7IGZhaWx1cmVzPTE7IGZpCiAgaWYgZG9ja2VyIGluZm8gPi9kZXYvbnVsbCAyPiYxOyB0aGVuIHByaW50ZiAnICBQQVNTICBEb2NrZXIgZGFlbW9uIHJlYWNoYWJsZVxuJzsgZWxzZSBwcmludGYgJyAgRkFJTCAgRG9ja2VyIGRhZW1vbiB1bnJlYWNoYWJsZVxuJzsgZmFpbHVyZXM9MTsgZmkKICBpZiBzeXN0ZW1jdGwgaXMtYWN0aXZlIC0tcXVpZXQgZmFpbDJiYW47IHRoZW4gcHJpbnRmICcgIFBBU1MgIGZhaWwyYmFuIGFjdGl2ZVxuJzsgZWxzZSBwcmludGYgJyAgV0FSTiAgZmFpbDJiYW4gaW5hY3RpdmVcbic7IGZpCiAgaWYgdWZ3IHN0YXR1cyAyPi9kZXYvbnVsbCB8IGdyZXAgLXEgJ1N0YXR1czogYWN0aXZlJzsgdGhlbiBwcmludGYgJyAgUEFTUyAgVUZXIGFjdGl2ZVxuJzsgZWxzZSBwcmludGYgJyAgV0FSTiAgVUZXIGluYWN0aXZlXG4nOyBmaQogIHJldHVybiAiJGZhaWx1cmVzIgp9CnN0YXR1cygpIHsKICBkb2N0b3IgfHwgdHJ1ZQogIHByaW50ZiAnXG5TZXJ2aWNlIHN0YXR1c1xuJwogIGxvY2FsIHNlcnZpY2UKICBmb3Igc2VydmljZSBpbiBkb2NrZXIgdGFpbHNjYWxlZCBmYWlsMmJhbjsgZG8KICAgIGlmICEgY29tbWFuZCAtdiBzeXN0ZW1jdGwgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICAgIHByaW50ZiAnICBJTkZPICBzeXN0ZW1kIHVuYXZhaWxhYmxlOyBjYW5ub3QgaW5zcGVjdCAlc1xuJyAiJHNlcnZpY2UiCiAgICAgIGJyZWFrCiAgICBlbGlmIHN5c3RlbWN0bCBpcy1hY3RpdmUgLS1xdWlldCAiJHNlcnZpY2UiOyB0aGVuCiAgICAgIHByaW50ZiAnICBQQVNTICAlcyBhY3RpdmVcbicgIiRzZXJ2aWNlIgogICAgZWxzZQogICAgICBwcmludGYgJyAgV0FSTiAgJXMgaW5hY3RpdmVcbicgIiRzZXJ2aWNlIgogICAgZmkKICBkb25lCiAgaWYgY29tbWFuZCAtdiB0YWlsc2NhbGUgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICBwcmludGYgJ1xuVGFpbHNjYWxlXG4nCiAgICB0YWlsc2NhbGUgc3RhdHVzIHx8IHRydWUKICBmaQp9CmZpeF9zZXJ2aWNlcygpIHsKICBsb2NhbCBzZXJ2aWNlIGNoYW5nZWQ9MAogIFtbICIkRVVJRCIgPT0gMCBdXSB8fCBkaWUgInJ1biAnbWlzdGJvcm4gZml4JyB3aXRoIHN1ZG8iCiAgY29tbWFuZCAtdiBzeXN0ZW1jdGwgPi9kZXYvbnVsbCAyPiYxIHx8IGRpZSAic3lzdGVtZCBpcyByZXF1aXJlZCB0byByZXBhaXIgc2VydmljZXMiCiAgZm9yIHNlcnZpY2UgaW4gZG9ja2VyIHRhaWxzY2FsZWQ7IGRvCiAgICBpZiAhIGNvbW1hbmQgLXYgIiRzZXJ2aWNlIiA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgICAgcHJpbnRmICcgIFNLSVAgICVzIGlzIG5vdCBpbnN0YWxsZWRcbicgIiRzZXJ2aWNlIgogICAgICBjb250aW51ZQogICAgZmkKICAgIGlmIHN5c3RlbWN0bCBpcy1hY3RpdmUgLS1xdWlldCAiJHNlcnZpY2UiICYmIHN5c3RlbWN0bCBpcy1lbmFibGVkIC0tcXVpZXQgIiRzZXJ2aWNlIjsgdGhlbgogICAgICBwcmludGYgJyAgUEFTUyAgJXMgaXMgYWxyZWFkeSBlbmFibGVkIGFuZCBhY3RpdmVcbicgIiRzZXJ2aWNlIgogICAgZWxzZQogICAgICBwcmludGYgJyAgRklYICAgZW5hYmxpbmcgYW5kIHN0YXJ0aW5nICVzXG4nICIkc2VydmljZSIKICAgICAgc3lzdGVtY3RsIGVuYWJsZSAtLW5vdyAiJHNlcnZpY2UiCiAgICAgIGNoYW5nZWQ9MQogICAgZmkKICBkb25lCiAgaWYgW1sgIiRjaGFuZ2VkIiA9PSAwIF1dOyB0aGVuIHByaW50ZiAnQ29yZSBzZXJ2aWNlcyBhcmUgYWxyZWFkeSBoZWFsdGh5LlxuJzsgZmkKICBwcmludGYgJ1VGVyBhbmQgU1NIIHNldHRpbmdzIGFyZSBsZWZ0IHVuY2hhbmdlZDsgcmV2aWV3IHRoZW0gd2l0aCBtaXN0Ym9ybiBzZWN1cml0eS1zdGF0dXMuXG4nCn0KdXBkYXRlX3J1bnRpcGkoKSB7CiAgcHJpbnRmICdVcGRhdGluZyBSdW50aXBpIGNvcmUgKHdpdGggYXBwIHNuYXBzaG90cykuLi5cbicKICB0YXNrX2V2ZW50IGNvcmUgdXBkYXRlIHN0YXJ0ZWQKICBzbmFwc2hvdF9hcHBzIDwgPChhcHBfcmVmcykKICBydW5fcnVudGlwaSB1cGRhdGUgbGF0ZXN0CiAgdGFza19ldmVudCBjb3JlIHVwZGF0ZSBjb21wbGV0ZWQKICBwcmludGYgJ1xuVXBkYXRpbmcgYXBwIHN0b3Jlcy4uLlxuJwogIHRhc2tfZXZlbnQgYXBwc3RvcmVzIHVwZGF0ZSBzdGFydGVkCiAgcnVuX3J1bnRpcGkgYXBwc3RvcmUgdXBkYXRlCiAgdGFza19ldmVudCBhcHBzdG9yZXMgdXBkYXRlIGNvbXBsZXRlZAogIHByaW50ZiAnXG5VcGRhdGluZyBhcHBzICh3aXRoIHNuYXBzaG90cykuLi5cbicKICB0YXNrX2V2ZW50IGFwcHMgdXBkYXRlIHN0YXJ0ZWQKICB1cGRhdGVfYXBwcwogIHRhc2tfZXZlbnQgYXBwcyB1cGRhdGUgY29tcGxldGVkCiAgcHJpbnRmICdcbk1pc3Rib3JuIHVwZGF0ZXMgY29tcGxldGUuXG4nCn0KdXBkYXRlX2Jvb3RzdHJhcCgpIHsKICBbWyAiJEVVSUQiID09IDAgXV0gfHwgZGllICJydW4gJ21pc3Rib3JuIHVwZ3JhZGUnIHdpdGggc3VkbyIKICBsb2NhbCBsYXRlc3QgY3VycmVudCB0ZW1wX2RpciBpbnN0YWxsZXJfdXJsCiAgdGFza19ldmVudCBib290c3RyYXAgcmVsZWFzZSBzdGFydGVkCiAgcHJpbnRmICdDaGVja2luZyB0aGUgbGF0ZXN0IHN0YWJsZSBNaXN0Ym9ybiBCb290c3RyYXAgcmVsZWFzZS4uLlxuJwogIGxhdGVzdD0iJChjdXJsIC1mc1NMIGh0dHBzOi8vYXBpLmdpdGh1Yi5jb20vcmVwb3MvRWNrUGhpL21pc3Rib3JuLWJvb3RzdHJhcC9yZWxlYXNlcy9sYXRlc3QgfCBzZWQgLW5FICdzL15bWzpzcGFjZTpdXSoidGFnX25hbWUiOltbOnNwYWNlOl1dKiIodlswLTldK1wuWzAtOV0rXC5bMC05XSspIi4qL1wxL3AnIHwgaGVhZCAtbjEpIiB8fCBkaWUgImNvdWxkIG5vdCBjaGVjayBHaXRIdWIgcmVsZWFzZXMiCiAgW1sgIiRsYXRlc3QiID1+IF52WzAtOV0rXC5bMC05XStcLlswLTldKyQgXV0gfHwgZGllICJHaXRIdWIgcmV0dXJuZWQgbm8gc3RhYmxlIGJvb3RzdHJhcCByZWxlYXNlIgogIHRhc2tfZXZlbnQgYm9vdHN0cmFwIHJlbGVhc2UgY29tcGxldGVkCiAgY3VycmVudD0iJHtNSVNUQk9STl9CT09UU1RSQVBfVkVSU0lPTjotdjAuMC4wfSIKICBjdXJyZW50PSIke2N1cnJlbnQjdn0iCiAgbGF0ZXN0PSIke2xhdGVzdCN2fSIKICBpZiBbWyAiJChwcmludGYgJyVzXG4lc1xuJyAiJGN1cnJlbnQiICIkbGF0ZXN0IiB8IHNvcnQgLVYgfCB0YWlsIC1uMSkiID09ICIkY3VycmVudCIgXV07IHRoZW4KICAgIHByaW50ZiAnTWlzdGJvcm4gQm9vdHN0cmFwICVzIGlzIGFscmVhZHkgY3VycmVudC5cbicgIiRjdXJyZW50IgogICAgdGFza19ldmVudCBib290c3RyYXAgaW5zdGFsbGVyIHNraXBwZWQKICAgIHJldHVybiAwCiAgZmkKICBpbnN0YWxsZXJfdXJsPSJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vRWNrUGhpL21pc3Rib3JuLWJvb3RzdHJhcC92JHtsYXRlc3R9L2luc3RhbGwuc2giCiAgdGVtcF9kaXI9IiQobWt0ZW1wIC1kKSIKICB0cmFwICdybSAtcmYgIiR0ZW1wX2RpciInIFJFVFVSTgogIHRhc2tfZXZlbnQgYm9vdHN0cmFwIGluc3RhbGxlciBzdGFydGVkCiAgcHJpbnRmICdVcGRhdGluZyBNaXN0Ym9ybiBCb290c3RyYXAgJXMg4oaSICVzLi4uXG4nICIkY3VycmVudCIgIiRsYXRlc3QiCiAgY3VybCAtZnNTTCAiJGluc3RhbGxlcl91cmwiIC1vICIkdGVtcF9kaXIvaW5zdGFsbC5zaCIgfHwgZGllICJjb3VsZCBub3QgZG93bmxvYWQgYm9vdHN0cmFwIGluc3RhbGxlciIKICBNSVNUQk9STl9WRVJTSU9OPSJ2JHtsYXRlc3R9IiBNSVNUQk9STl9UVUk9MCBiYXNoICIkdGVtcF9kaXIvaW5zdGFsbC5zaCIgc2VydmVyIC0teWVzCiAgdGFza19ldmVudCBib290c3RyYXAgaW5zdGFsbGVyIGNvbXBsZXRlZAogIHByaW50ZiAnTWlzdGJvcm4gQm9vdHN0cmFwIHVwZGF0ZWQgdG8gJXMuXG4nICIkbGF0ZXN0Igp9CnVwZGF0ZV9hcHBzKCkgewogIGxvY2FsIGJhY2t1cD0xIHJlZnM9KCkgcmVmCiAgW1sgIiR7MTotfSIgPT0gLS1uby1iYWNrdXAgXV0gJiYgeyBiYWNrdXA9MDsgc2hpZnQ7IH0KICBpZiBbWyAkIyAtZ3QgMCBdXTsgdGhlbiByZWZzPSgiJEAiKTsgZWxzZSBtYXBmaWxlIC10IHJlZnMgPCA8KGFwcF9yZWZzKTsgZmkKICBmb3IgcmVmIGluICIke3JlZnNbQF19IjsgZG8gW1sgIiRiYWNrdXAiID09IDEgXV0gJiYgcnVuX3J1bnRpcGkgYXBwIGJhY2t1cCAiJHJlZiI7IHJ1bl9ydW50aXBpIGFwcCB1cGRhdGUgIiRyZWYiOyBkb25lCn0KdXNhZ2UoKSB7CiAgY2F0IDw8J0VPRicKVXNhZ2U6IG1pc3Rib3JuIENPTU1BTkQgW0FSR1NdCiAgc3RhdHVzICAgICAgICAgICAgICAgICAgICAgICBzaG93IGluc3RhbGxhdGlvbiwgc2VydmljZSBhbmQgVGFpbHNjYWxlIHN0YXR1cwogIGRvY3RvciAgICAgICAgICAgICAgICAgICAgICAgYXVkaXQgRG9ja2VyLCBSdW50aXBpLCBUYWlsc2NhbGUsIHJjbG9uZSBhbmQgc2VjdXJpdHkKICBmaXggICAgICAgICAgICAgICAgICAgICAgICAgIGVuYWJsZSBhbmQgc3RhcnQgaW5zdGFsbGVkIERvY2tlci9UYWlsc2NhbGUgc2VydmljZXMKICBzZWN1cml0eS1zdGF0dXMgICAgICAgICAgICAgIHNob3cgU1NILCBVRlcsIGZhaWwyYmFuIGFuZCBUYWlsc2NhbGUgc3RhdHVzCiAgdGFpbHNjYWxlLXN0YXR1cyAgICAgICAgICAgICBzaG93IFRhaWxzY2FsZSBzdGF0dXMKICByY2xvbmUtY29uZmlnICAgICAgICAgICAgICAgIG9wZW4gcmNsb25lJ3MgY29uZmlndXJhdGlvbiBVSQogIHVwZGF0ZS1hcHBzIFstLW5vLWJhY2t1cF0gW0FQUDpTVE9SRSAuLi5dCiAgdXBkYXRlLWNvcmUgWy0tbm8tYmFja3VwXSBbVkVSU0lPTl0KICB1cGRhdGUtYXBwc3RvcmVzCiAgdXBncmFkZSAgICAgICAgICAgICAgICAgICAgICB1cGdyYWRlIE1pc3Rib3JuIEJvb3RzdHJhcCB0byB0aGUgbGF0ZXN0IHN0YWJsZSByZWxlYXNlCiAgdXBkYXRlICAgICAgICAgICAgICAgICAgICAgICBhbGlhcyBmb3IgdXBncmFkZQogIHVwZGF0ZS1ydW50aXBpICAgICAgICAgICAgICAgdXBkYXRlIFJ1bnRpcGkgY29yZSwgYXBwIHN0b3JlcyBhbmQgYXBwcyAod2l0aCBiYWNrdXBzKQpFT0YKfQpjYXNlICIkezE6LX0iIGluCiAgc3RhdHVzKSBzdGF0dXMgOzsKICBkb2N0b3IpIGRvY3RvciA7OwogIGZpeCkgZml4X3NlcnZpY2VzIDs7CiAgc2VjdXJpdHktc3RhdHVzKSBzc2hkIC1UIDI+L2Rldi9udWxsIHwgZ3JlcCAtRSAncGFzc3dvcmRhdXRoZW50aWNhdGlvbnxwZXJtaXRyb290bG9naW58XnBvcnQnOyB1Zncgc3RhdHVzIHZlcmJvc2U7IGZhaWwyYmFuLWNsaWVudCBzdGF0dXMgc3NoZCB8fCB0cnVlOyB0YWlsc2NhbGUgc3RhdHVzIHx8IHRydWUgOzsKICB0YWlsc2NhbGUtc3RhdHVzKSB0YWlsc2NhbGUgc3RhdHVzIDs7CiAgcmNsb25lLWNvbmZpZykgcmNsb25lIGNvbmZpZyA7OwogIHVwZGF0ZS1hcHBzKSBzaGlmdDsgdXBkYXRlX2FwcHMgIiRAIiA7OwogIHVwZGF0ZS1jb3JlKSBzaGlmdDsgYmFja3VwPTE7IFtbICIkezE6LX0iID09IC0tbm8tYmFja3VwIF1dICYmIHsgYmFja3VwPTA7IHNoaWZ0OyB9OyBbWyAiJGJhY2t1cCIgPT0gMSBdXSAmJiBzbmFwc2hvdF9hcHBzIDwgPChhcHBfcmVmcyk7IHJ1bl9ydW50aXBpIHVwZGF0ZSAiJHsxOi1sYXRlc3R9IiA7OwogIHVwZGF0ZS1hcHBzdG9yZXMpIHJ1bl9ydW50aXBpIGFwcHN0b3JlIHVwZGF0ZSA7OwogIHVwZ3JhZGV8dXBkYXRlKSB1cGRhdGVfYm9vdHN0cmFwIDs7CiAgdXBkYXRlLXJ1bnRpcGkpIHVwZGF0ZV9ydW50aXBpIDs7CiAgLWh8LS1oZWxwfCcnKSB1c2FnZSA7OwogICopIGRpZSAidW5rbm93biBjb21tYW5kOiAkMSIgOzsKZXNhYwo='
+export MISTBORN_UPDATE_PLAN_B64='dmVyc2lvbiA9IDEKY29sbGVjdGlvbiA9ICJ1cGRhdGUiCgpbW3N0YWdlc11dCmlkID0gImJvb3RzdHJhcCIKdGl0bGUgPSAiTWlzdGJvcm4gQm9vdHN0cmFwIgpoZWxwID0gIkNoZWNrcyB0aGUgbGF0ZXN0IHN0YWJsZSByZWxlYXNlIGFuZCByZXJ1bnMgaXRzIGluc3RhbGxlciB0byByZWZyZXNoIHRoZSBNaXN0Ym9ybiB0b29sIHdoaWxlIHJlc3VtaW5nIGNvbXBsZXRlZCBzZXR1cCBzdGFnZXMuIgpbW3N0YWdlcy50YXNrc11dCmlkID0gInJlbGVhc2UiCnRpdGxlID0gIkNoZWNrIGxhdGVzdCBzdGFibGUgYm9vdHN0cmFwIHJlbGVhc2UiCmFjdGlvbiA9ICJHaXRIdWIgcmVsZWFzZXMvbGF0ZXN0Igp3ZWlnaHQgPSAxCltbc3RhZ2VzLnRhc2tzXV0KaWQgPSAiaW5zdGFsbGVyIgp0aXRsZSA9ICJSZWZyZXNoIE1pc3Rib3JuIHJ1bm5lciBhbmQgY29tbWFuZCIKYWN0aW9uID0gInJ1biB0YWdnZWQgc2VydmVyIGluc3RhbGxlciAocmVzdW1lIGNvbXBsZXRlZCBzdGFnZXMpIgp3ZWlnaHQgPSAzCg=='
 # shellcheck shell=bash
 
 ui_is_terminal() { [[ -t 1 && -z "${NO_COLOR:-}" ]]; }
@@ -22,6 +23,15 @@ ui_success() { printf '  %s✓%s %s\n' "$(ui_color 32)" "$(ui_reset)" "$1"; }
 ui_warn() { printf '  %s!%s %s\n' "$(ui_color 33)" "$(ui_reset)" "$1" >&2; }
 ui_error() { printf '  %s✗%s %s\n' "$(ui_color 31)" "$(ui_reset)" "$1" >&2; }
 ui_step() { printf '\n%s==>%s %s\n' "$(ui_color '1;34')" "$(ui_reset)" "$1"; }
+
+mistborn_task_event() {
+  local stage="$1" task="$2" state="$3"
+  [[ -n "${MISTBORN_PROGRESS_FILE:-}" ]] || return 0
+  printf '%s\t%s\t%s\n' "$stage" "$task" "$state" >>"$MISTBORN_PROGRESS_FILE" || true
+}
+mistborn_task_start() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" started; }
+mistborn_task_complete() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" completed; }
+mistborn_task_skip() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" skipped; }
 
 ui_confirm() {
   local prompt="$1" reply
@@ -96,8 +106,12 @@ module_common_description="System prerequisites"
 module_common_apply() {
   ui_step "$module_common_description"
   mistborn_require_root
+  mistborn_task_start apt-index
   mistborn_run apt-get update
+  mistborn_task_complete apt-index
+  mistborn_task_start base-packages
   mistborn_apt_install ca-certificates curl git
+  mistborn_task_complete base-packages
   ui_success "$module_common_description"
 }
 # shellcheck shell=bash
@@ -106,12 +120,16 @@ module_docker_description="Docker Engine"
 
 module_docker_apply() {
   ui_step "$module_docker_description"
+  mistborn_task_start engine
   if command -v docker >/dev/null 2>&1; then
     ui_info "Docker already installed"
   else
     mistborn_apt_install docker.io
   fi
+  mistborn_task_complete engine
+  mistborn_task_start service
   mistborn_run systemctl enable --now docker
+  mistborn_task_complete service
   ui_success "$module_docker_description"
 }
 # shellcheck shell=bash
@@ -125,20 +143,27 @@ module_zsh_apply() {
   [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
 
   ui_step "$module_zsh_description for $user"
+  mistborn_task_start packages
   mistborn_apt_install zsh git
+  mistborn_task_complete packages
   custom_dir="$home/.oh-my-zsh"
+  mistborn_task_start oh-my-zsh
   if [[ ! -d "$custom_dir/.git" ]]; then
     mistborn_run sudo -u "$user" git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$custom_dir"
   else
     ui_info "Oh My Zsh already installed"
   fi
+  mistborn_task_complete oh-my-zsh
+  mistborn_task_start powerlevel10k
   if [[ ! -d "$custom_dir/custom/themes/powerlevel10k/.git" ]]; then
     mistborn_run sudo -u "$user" git clone --depth 1 https://github.com/romkatv/powerlevel10k.git \
       "$custom_dir/custom/themes/powerlevel10k"
   else
     ui_info "Powerlevel10k already installed"
   fi
+  mistborn_task_complete powerlevel10k
 
+  mistborn_task_start configuration
   zshrc="$home/.zshrc"
   if [[ -f "$zshrc" && ! -f "$zshrc.mistborn-backup" ]]; then
     mistborn_run cp -a "$zshrc" "$zshrc.mistborn-backup"
@@ -156,6 +181,7 @@ module_zsh_apply() {
   else
     ui_warn "Keeping existing $zshrc; set MISTBORN_REPLACE_ZSHRC=1 to replace it"
   fi
+  mistborn_task_complete configuration
   mistborn_run chsh -s "$(command -v zsh)" "$user"
   ui_success "$module_zsh_description"
 }
@@ -166,6 +192,7 @@ module_tailscale_description="Tailscale"
 module_tailscale_apply() {
   local sysctl_file=/etc/sysctl.d/99-mistborn-tailscale.conf
   ui_step "$module_tailscale_description"
+  mistborn_task_start install
   if command -v tailscale >/dev/null 2>&1; then
     ui_info "Tailscale already installed"
   elif [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
@@ -173,25 +200,36 @@ module_tailscale_apply() {
   else
     curl -fsSL https://tailscale.com/install.sh | sh
   fi
+  mistborn_task_complete install
   if [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]]; then
+    mistborn_task_start forwarding
     if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
       ui_info "Would enable persistent IPv4 and IPv6 forwarding in $sysctl_file"
     else
       printf '%s\n' 'net.ipv4.ip_forward = 1' 'net.ipv6.conf.all.forwarding = 1' >"$sysctl_file"
       sysctl -p "$sysctl_file"
     fi
+    mistborn_task_complete forwarding
+  else
+    mistborn_task_skip forwarding
   fi
   local args=(up)
   [[ "${MISTBORN_TAILSCALE_SSH:-0}" == 1 ]] && args+=(--ssh)
   [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]] && args+=(--advertise-exit-node)
+  mistborn_task_start connect
   if [[ -n "${TAILSCALE_AUTH_KEY:-}" ]]; then
     args+=(--auth-key "$TAILSCALE_AUTH_KEY")
     mistborn_run tailscale "${args[@]}"
   else
     mistborn_run_interactive tailscale "${args[@]}"
   fi
+  mistborn_task_complete connect
   if [[ "${MISTBORN_TAILSCALE_AUTO_UPDATE:-0}" == 1 ]]; then
+    mistborn_task_start auto-update
     mistborn_run tailscale set --auto-update
+    mistborn_task_complete auto-update
+  else
+    mistborn_task_skip auto-update
   fi
   ui_success "$module_tailscale_description"
 }
@@ -201,6 +239,7 @@ module_runtipi_description="Runtipi"
 
 module_runtipi_apply() {
   ui_step "$module_runtipi_description"
+  mistborn_task_start install
   if command -v runtipi-cli >/dev/null 2>&1 || [[ -x /opt/runtipi/runtipi-cli ]]; then
     ui_info "Runtipi already installed"
   elif [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
@@ -208,6 +247,7 @@ module_runtipi_apply() {
   else
     curl -fsSL https://setup.runtipi.io | bash
   fi
+  mistborn_task_complete install
   ui_success "$module_runtipi_description"
 }
 # shellcheck shell=bash
@@ -220,13 +260,19 @@ module_rclone_apply() {
   home="$(mistborn_user_home "$user")"
   [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
   ui_step "$module_rclone_description"
+  mistborn_task_start package
   mistborn_apt_install rclone
+  mistborn_task_complete package
   if [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
+    mistborn_task_start configuration
     if [[ "$user" == root ]]; then
       mistborn_run_interactive env HOME="$home" rclone config
     else
       mistborn_run_interactive runuser -u "$user" -- env HOME="$home" rclone config
     fi
+    mistborn_task_complete configuration
+  else
+    mistborn_task_skip configuration
   fi
   ui_success "$module_rclone_description"
 }
@@ -239,6 +285,8 @@ module_security_apply() {
   ui_step "$module_security_description"
   if [[ "${MISTBORN_HARDEN:-0}" != 1 ]]; then
     ui_warn "Security hardening is opt-in; re-run with MISTBORN_HARDEN=1 after testing SSH keys"
+    for task in packages ssh firewall fail2ban; do mistborn_task_skip "$task"; done
+    mistborn_task_skip tailscale-only
     return 0
   fi
   if [[ "${MISTBORN_DISABLE_PASSWORD_AUTH:-1}" == 1 && "${MISTBORN_DRY_RUN:-0}" != 1 ]]; then
@@ -249,7 +297,10 @@ module_security_apply() {
       return 1
     fi
   fi
+  mistborn_task_start packages
   mistborn_apt_install ufw fail2ban
+  mistborn_task_complete packages
+  mistborn_task_start ssh
   if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
     ui_info "Would harden $ssh_config and validate it before restart"
   else
@@ -268,17 +319,26 @@ module_security_apply() {
     printf '[sshd]\nenabled = true\nport = ssh\nmaxretry = %s\nbantime = %s\n' \
       "${MISTBORN_FAIL2BAN_MAXRETRY:-3}" "${MISTBORN_FAIL2BAN_BANTIME:-3600}" >/etc/fail2ban/jail.local
   fi
+  mistborn_task_complete ssh
+  mistborn_task_start firewall
   mistborn_run ufw allow "$ssh_port/tcp"
   for port in ${MISTBORN_ALLOWED_TCP_PORTS:-}; do mistborn_run ufw allow "$port/tcp"; done
   mistborn_run ufw default deny incoming
   mistborn_run ufw --force enable
+  mistborn_task_complete firewall
+  mistborn_task_start fail2ban
   mistborn_run systemctl enable --now fail2ban
+  mistborn_task_complete fail2ban
   if [[ "${MISTBORN_TAILSCALE_ONLY:-0}" == 1 ]]; then
+    mistborn_task_start tailscale-only
     mistborn_run tailscale set --ssh=true
     mistborn_run ufw allow in on tailscale0
     mistborn_run ufw allow "${MISTBORN_TAILSCALE_PORT:-41641}/udp"
     mistborn_run ufw delete allow "$ssh_port/tcp" || true
+    mistborn_task_complete tailscale-only
     ui_warn "Confirm a new Tailscale SSH session before disconnecting"
+  else
+    mistborn_task_skip tailscale-only
   fi
   ui_success "$module_security_description"
 }
@@ -292,11 +352,24 @@ module_toolset_apply() {
     ui_info "Would install /usr/local/bin/mistborn and its Ratatui runner"
   else
     install -d -m 0755 /usr/local/lib/mistborn
-    printf '%s' "$MISTBORN_TOOL_B64" | base64 -d >/usr/local/lib/mistborn/host.sh
-    chmod 0644 /usr/local/lib/mistborn/host.sh
+    mistborn_task_start runner
     if [[ -n "${MISTBORN_RUNNER_BINARY:-}" && -x "$MISTBORN_RUNNER_BINARY" && "$MISTBORN_RUNNER_BINARY" != /usr/local/bin/mistborn-bootstrap ]]; then
       install -m 0755 "$MISTBORN_RUNNER_BINARY" /usr/local/bin/mistborn-bootstrap
+      mistborn_task_complete runner
+    else
+      mistborn_task_skip runner
     fi
+    mistborn_task_start command
+    install -d -m 0755 /usr/local/lib/mistborn/plans
+    local staging_dir
+    staging_dir="$(mktemp -d /usr/local/lib/mistborn/.install.XXXXXX)"
+    printf '%s' "$MISTBORN_TOOL_B64" | base64 -d >"$staging_dir/host.sh"
+    chmod 0644 "$staging_dir/host.sh"
+    printf '%s' "$MISTBORN_UPDATE_PLAN_B64" | base64 -d >"$staging_dir/update.toml"
+    chmod 0644 "$staging_dir/update.toml"
+    mv -f "$staging_dir/host.sh" /usr/local/lib/mistborn/host.sh
+    mv -f "$staging_dir/update.toml" /usr/local/lib/mistborn/plans/update.toml
+    rmdir "$staging_dir"
     cat >/usr/local/bin/mistborn <<'MISTBORN_LAUNCHER'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -306,6 +379,7 @@ fi
 exec bash /usr/local/lib/mistborn/host.sh "$@"
 MISTBORN_LAUNCHER
     chmod 0755 /usr/local/bin/mistborn
+    mistborn_task_complete command
   fi
   ui_success "$module_toolset_description"
 }

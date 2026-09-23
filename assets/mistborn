@@ -4,6 +4,10 @@ set -Eeuo pipefail
 RUNTIPI_PATH="${RUNTIPI_PATH:-/opt/runtipi}"
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+task_event() {
+  [[ -n "${MISTBORN_PROGRESS_FILE:-}" ]] || return 0
+  printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$MISTBORN_PROGRESS_FILE" || true
+}
 runtipi_cli() {
   if [[ -x "$RUNTIPI_PATH/runtipi-cli" ]]; then printf '%s\n' "$RUNTIPI_PATH/runtipi-cli"
   elif command -v runtipi-cli >/dev/null; then command -v runtipi-cli
@@ -69,15 +73,47 @@ fix_services() {
   if [[ "$changed" == 0 ]]; then printf 'Core services are already healthy.\n'; fi
   printf 'UFW and SSH settings are left unchanged; review them with mistborn security-status.\n'
 }
-update_all() {
+update_runtipi() {
   printf 'Updating Runtipi core (with app snapshots)...\n'
+  task_event core update started
   snapshot_apps < <(app_refs)
   run_runtipi update latest
+  task_event core update completed
   printf '\nUpdating app stores...\n'
+  task_event appstores update started
   run_runtipi appstore update
+  task_event appstores update completed
   printf '\nUpdating apps (with snapshots)...\n'
+  task_event apps update started
   update_apps
+  task_event apps update completed
   printf '\nMistborn updates complete.\n'
+}
+update_bootstrap() {
+  [[ "$EUID" == 0 ]] || die "run 'mistborn upgrade' with sudo"
+  local latest current temp_dir installer_url
+  task_event bootstrap release started
+  printf 'Checking the latest stable Mistborn Bootstrap release...\n'
+  latest="$(curl -fsSL https://api.github.com/repos/EckPhi/mistborn-bootstrap/releases/latest | sed -nE 's/^[[:space:]]*"tag_name":[[:space:]]*"(v[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' | head -n1)" || die "could not check GitHub releases"
+  [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "GitHub returned no stable bootstrap release"
+  task_event bootstrap release completed
+  current="${MISTBORN_BOOTSTRAP_VERSION:-v0.0.0}"
+  current="${current#v}"
+  latest="${latest#v}"
+  if [[ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)" == "$current" ]]; then
+    printf 'Mistborn Bootstrap %s is already current.\n' "$current"
+    task_event bootstrap installer skipped
+    return 0
+  fi
+  installer_url="https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v${latest}/install.sh"
+  temp_dir="$(mktemp -d)"
+  trap 'rm -rf "$temp_dir"' RETURN
+  task_event bootstrap installer started
+  printf 'Updating Mistborn Bootstrap %s → %s...\n' "$current" "$latest"
+  curl -fsSL "$installer_url" -o "$temp_dir/install.sh" || die "could not download bootstrap installer"
+  MISTBORN_VERSION="v${latest}" MISTBORN_TUI=0 bash "$temp_dir/install.sh" server --yes
+  task_event bootstrap installer completed
+  printf 'Mistborn Bootstrap updated to %s.\n' "$latest"
 }
 update_apps() {
   local backup=1 refs=() ref
@@ -97,7 +133,9 @@ Usage: mistborn COMMAND [ARGS]
   update-apps [--no-backup] [APP:STORE ...]
   update-core [--no-backup] [VERSION]
   update-appstores
-  update                       update Runtipi core, app stores and apps (with backups)
+  upgrade                      upgrade Mistborn Bootstrap to the latest stable release
+  update                       alias for upgrade
+  update-runtipi               update Runtipi core, app stores and apps (with backups)
 EOF
 }
 case "${1:-}" in
@@ -110,7 +148,8 @@ case "${1:-}" in
   update-apps) shift; update_apps "$@" ;;
   update-core) shift; backup=1; [[ "${1:-}" == --no-backup ]] && { backup=0; shift; }; [[ "$backup" == 1 ]] && snapshot_apps < <(app_refs); run_runtipi update "${1:-latest}" ;;
   update-appstores) run_runtipi appstore update ;;
-  update) update_all ;;
+  upgrade|update) update_bootstrap ;;
+  update-runtipi) update_runtipi ;;
   -h|--help|'') usage ;;
   *) die "unknown command: $1" ;;
 esac

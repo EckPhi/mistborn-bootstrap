@@ -1,4 +1,5 @@
 mod dashboard;
+mod plan;
 mod progress;
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ use std::process::{Command, ExitCode};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use dashboard::Dashboard;
+use plan::{Plan, Stage};
 use progress::ProgressView;
 
 #[derive(Debug)]
@@ -36,6 +38,8 @@ struct ModuleState {
     status: String,
     attempts: u32,
     updated_at: u64,
+    #[serde(default)]
+    tasks: BTreeMap<String, String>,
 }
 
 struct EventLog(File);
@@ -53,10 +57,9 @@ fn usage() -> &'static str {
 }
 
 fn interactive_terminal() -> bool {
-    io::stdin().is_terminal()
+    env::var("MISTBORN_TUI").as_deref() != Ok("0")
+        && io::stdin().is_terminal()
         && io::stdout().is_terminal()
-        && env::var("TERM").is_ok_and(|term| term != "dumb")
-        && env::var_os("NO_COLOR").is_none()
 }
 
 fn value(args: &[String], index: &mut usize, flag: &str) -> Result<String, String> {
@@ -138,6 +141,27 @@ fn read_modules(path: &Path) -> Result<Vec<String>, String> {
     Ok(modules)
 }
 
+struct TaskEvent {
+    stage: String,
+    task: String,
+    state: String,
+}
+
+fn read_task_events(path: &Path) -> Result<Vec<TaskEvent>, String> {
+    let contents = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    Ok(contents
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\t');
+            Some(TaskEvent {
+                stage: fields.next()?.to_owned(),
+                task: fields.next()?.to_owned(),
+                state: fields.next()?.to_owned(),
+            })
+        })
+        .collect())
+}
+
 fn load_state(path: &Path, collection: &str) -> Result<RunState, String> {
     if !path.exists() {
         return Ok(RunState {
@@ -174,7 +198,20 @@ fn execute(options: Options) -> Result<(), String> {
         .join("dist")
         .join(format!("{}.sh", options.collection));
     let modules = read_modules(&collection_file)?;
-    if modules.is_empty() {
+    let plan_path = options
+        .root
+        .join("plans")
+        .join(format!("{}.toml", options.collection));
+    let plan = plan::load(&plan_path, &options.collection)?;
+    let planned_modules: Vec<String> = plan.stages.iter().map(|stage| stage.id.clone()).collect();
+    if modules != planned_modules {
+        return Err(format!(
+            "plan {} does not match {}",
+            plan_path.display(),
+            collection_file.display()
+        ));
+    }
+    if plan.stages.is_empty() {
         return Err(format!(
             "collection {} contains no modules",
             options.collection
@@ -190,12 +227,13 @@ fn execute(options: Options) -> Result<(), String> {
         .state_dir
         .join(format!("{}.json", options.collection));
     let mut state = load_state(&state_path, &options.collection)?;
-    let completed_flags: Vec<bool> = modules
+    let completed_flags: Vec<bool> = plan
+        .stages
         .iter()
-        .map(|module| {
+        .map(|stage| {
             state
                 .modules
-                .get(module)
+                .get(&stage.id)
                 .is_some_and(|entry| entry.status == "completed")
         })
         .collect();
@@ -204,7 +242,7 @@ fn execute(options: Options) -> Result<(), String> {
     let mut dashboard = if use_dashboard {
         Some(Dashboard::new(
             &options.collection,
-            &modules,
+            &plan.stages,
             &completed_flags,
         )?)
     } else {
@@ -216,25 +254,27 @@ fn execute(options: Options) -> Result<(), String> {
         Some(ProgressView::new(
             &options.collection,
             already_completed,
-            modules.len(),
+            plan.stages.len(),
         ))
     };
-    let run_id = run_id();
-    let log_path = options.log_dir.join(format!("{run_id}.jsonl"));
+    let run_token = run_id();
+    let log_path = options.log_dir.join(format!("{run_token}.jsonl"));
     let file = OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(&log_path)
         .map_err(|error| error.to_string())?;
     let mut log = EventLog(file);
-    log.emit(json!({"at": now(), "event": "run_started", "run_id": run_id, "collection": options.collection}))
+    log.emit(json!({"at": now(), "event": "run_started", "run_id": run_token, "collection": options.collection}))
         .map_err(|error| error.to_string())?;
 
-    for module in modules {
-        if state
-            .modules
-            .get(&module)
-            .is_some_and(|entry| entry.status == "completed")
+    for (stage_index, stage) in plan.stages.iter().enumerate() {
+        let module = &stage.id;
+        if module != "toolset"
+            && state
+                .modules
+                .get(module)
+                .is_some_and(|entry| entry.status == "completed")
         {
             if let Some(progress) = &progress {
                 progress.skipped(&module);
@@ -246,7 +286,7 @@ fn execute(options: Options) -> Result<(), String> {
 
         let attempts = state
             .modules
-            .get(&module)
+            .get(module)
             .map_or(1, |entry| entry.attempts + 1);
         if let Some(progress) = &progress {
             progress.started(&module, attempts);
@@ -261,14 +301,21 @@ fn execute(options: Options) -> Result<(), String> {
                 status: "running".to_owned(),
                 attempts,
                 updated_at: now(),
+                tasks: stage
+                    .tasks
+                    .iter()
+                    .map(|task| (task.id.clone(), "pending".to_owned()))
+                    .collect(),
             },
         );
         state.updated_at = now();
         save_state(&state_path, &state)?;
 
         let started_at = Instant::now();
+        let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
+        File::create(&progress_path).map_err(|error| error.to_string())?;
         let (succeeded, exit_code) = if let Some(dashboard) = &mut dashboard {
-            dashboard.run_module(&installer, &options.forwarded, &module)?
+            dashboard.run_module(&installer, &options.forwarded, stage_index, &progress_path)?
         } else {
             let status = Command::new("bash")
                 .arg(&installer)
@@ -279,19 +326,60 @@ fn execute(options: Options) -> Result<(), String> {
                     "MISTBORN_RUNNER_BINARY",
                     env::current_exe().map_err(|error| error.to_string())?,
                 )
+                .env("MISTBORN_PROGRESS_FILE", &progress_path)
+                .env("MISTBORN_PROGRESS_STAGE", module)
                 .status()
                 .map_err(|error| format!("failed to start {module}: {error}"))?;
             (status.success(), status.code())
         };
+        let task_events = read_task_events(&progress_path)?;
+        let _ = fs::remove_file(&progress_path);
+        if let Some(module_state) = state.modules.get_mut(module) {
+            for event in task_events {
+                if event.stage != *module {
+                    continue;
+                }
+                module_state
+                    .tasks
+                    .insert(event.task.clone(), event.state.clone());
+                let action = stage
+                    .tasks
+                    .iter()
+                    .find(|task| task.id == event.task)
+                    .map(|task| task.action.as_str())
+                    .unwrap_or("");
+                log.emit(json!({"at": now(), "event": format!("task_{}", event.state), "module": module, "task": event.task, "action": action}))
+                    .map_err(|error| error.to_string())?;
+            }
+            if !succeeded {
+                for (task_id, task_state) in &mut module_state.tasks {
+                    if task_state == "started" {
+                        *task_state = "failed".to_owned();
+                        log.emit(json!({"at": now(), "event": "task_failed", "module": module, "task": task_id}))
+                            .map_err(|error| error.to_string())?;
+                    }
+                }
+                if module_state
+                    .tasks
+                    .values()
+                    .all(|task_state| task_state == "pending")
+                {
+                    if let Some((task_id, task_state)) = module_state.tasks.iter_mut().next() {
+                        *task_state = "failed".to_owned();
+                        log.emit(json!({"at": now(), "event": "task_failed", "module": module, "task": task_id}))
+                            .map_err(|error| error.to_string())?;
+                    }
+                }
+            }
+        }
         let elapsed = started_at.elapsed();
-        state.modules.insert(
-            module.clone(),
-            ModuleState {
-                status: if succeeded { "completed" } else { "failed" }.to_owned(),
-                attempts,
-                updated_at: now(),
-            },
-        );
+        let module_state = state
+            .modules
+            .get_mut(module)
+            .expect("module state was just inserted");
+        module_state.status = if succeeded { "completed" } else { "failed" }.to_owned();
+        module_state.attempts = attempts;
+        module_state.updated_at = now();
         state.updated_at = now();
         save_state(&state_path, &state)?;
         log.emit(json!({"at": now(), "event": if succeeded { "module_completed" } else { "module_failed" }, "module": module, "exit_code": exit_code, "elapsed_ms": elapsed.as_millis()}))
@@ -309,7 +397,7 @@ fn execute(options: Options) -> Result<(), String> {
         }
     }
 
-    log.emit(json!({"at": now(), "event": "run_completed", "run_id": run_id, "collection": options.collection}))
+    log.emit(json!({"at": now(), "event": "run_completed", "run_id": run_token, "collection": options.collection}))
         .map_err(|error| error.to_string())?;
     drop(dashboard);
     if let Some(progress) = &progress {
@@ -338,13 +426,33 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
     let operation = command_arguments
         .first()
         .map_or("help", |argument| argument.as_str());
+    let plan = if operation == "update" || operation == "upgrade" {
+        let path = script
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("plans/update.toml");
+        plan::load(&path, "update")?
+    } else {
+        Plan {
+            version: 1,
+            collection: "host".to_owned(),
+            stages: vec![Stage {
+                id: operation.to_owned(),
+                title: operation.to_owned(),
+                help: host_help(operation).to_owned(),
+                tasks: Vec::new(),
+            }],
+        }
+    };
     if interactive_terminal() {
-        let steps = vec![operation.to_owned()];
-        let mut dashboard = Dashboard::new("host", &steps, &[false])?;
+        let mut dashboard = Dashboard::new("host", &plan.stages, &vec![false; plan.stages.len()])?;
+        let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
+        File::create(&progress_path).map_err(|error| error.to_string())?;
         let (succeeded, code) =
-            dashboard.run_host_command(&script, command_arguments, operation)?;
+            dashboard.run_host_command(&script, command_arguments, operation, &progress_path)?;
         let output = dashboard.screen_contents();
         drop(dashboard);
+        let _ = fs::remove_file(&progress_path);
         let output = output.trim_end();
         if !output.is_empty() {
             println!("{output}");
@@ -358,11 +466,20 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
             ))
         }
     } else {
+        let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
+        File::create(&progress_path).map_err(|error| error.to_string())?;
         let status = Command::new("bash")
             .arg(&script)
             .args(command_arguments)
+            .env("MISTBORN_PROGRESS_FILE", &progress_path)
+            .env("MISTBORN_PROGRESS_STAGE", "bootstrap")
+            .env(
+                "MISTBORN_BOOTSTRAP_VERSION",
+                format!("v{}", env!("CARGO_PKG_VERSION")),
+            )
             .status()
             .map_err(|error| format!("failed to start mistborn {operation}: {error}"))?;
+        let _ = fs::remove_file(progress_path);
         if status.success() {
             Ok(())
         } else {
@@ -373,6 +490,25 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
                     .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
             ))
         }
+    }
+}
+
+fn host_help(operation: &str) -> &'static str {
+    match operation {
+        "status" => {
+            "Read-only overview of installed components, service health, and Tailscale connectivity."
+        }
+        "doctor" => "Runs read-only diagnostics. Review each warning before choosing a repair.",
+        "fix" => {
+            "Enables and starts Docker and Tailscale services. SSH and firewall settings are not changed."
+        }
+        "upgrade" | "update" => {
+            "Checks the latest stable release and refreshes the Mistborn Bootstrap tool."
+        }
+        "update-runtipi" => {
+            "Updates Runtipi core, app stores, and apps. App snapshots are created before updates."
+        }
+        _ => "Mistborn host-management command.",
     }
 }
 
@@ -410,7 +546,13 @@ mod tests {
         let log_dir = base.join("logs");
         fs::create_dir_all(root.join("collections")).unwrap();
         fs::create_dir(root.join("dist")).unwrap();
+        fs::create_dir(root.join("plans")).unwrap();
         fs::write(root.join("collections/test.modules"), "first\nsecond\n").unwrap();
+        fs::write(
+            root.join("plans/test.toml"),
+            "version=1\ncollection='test'\n[[stages]]\nid='first'\ntitle='First'\nhelp='First test stage'\n[[stages]]\nid='second'\ntitle='Second'\nhelp='Second test stage'\n",
+        )
+        .unwrap();
         fs::write(
             root.join("dist/test.sh"),
             format!(

@@ -1,3 +1,4 @@
+use crate::plan::Stage;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -15,38 +16,54 @@ pub enum StepStatus {
     Pending,
     Running,
     Complete,
+    Skipped,
     Failed,
 }
 
 pub struct Dashboard {
     terminal: DefaultTerminal,
     collection: String,
-    modules: Vec<(String, StepStatus)>,
+    stages: Vec<Stage>,
+    stage_status: Vec<StepStatus>,
+    task_status: Vec<Vec<StepStatus>>,
     active: usize,
     parser: vt100::Parser,
 }
 
 impl Dashboard {
-    pub fn new(collection: &str, modules: &[String], completed: &[bool]) -> Result<Self, String> {
+    pub fn new(collection: &str, stages: &[Stage], completed: &[bool]) -> Result<Self, String> {
         let terminal = ratatui::try_init().map_err(|error| error.to_string())?;
-        let modules = modules
+        let stage_status = stages
             .iter()
             .zip(completed)
-            .map(|(name, done)| {
-                (
-                    name.clone(),
+            .map(|(_, done)| {
+                if *done {
+                    StepStatus::Complete
+                } else {
+                    StepStatus::Pending
+                }
+            })
+            .collect();
+        let task_status = stages
+            .iter()
+            .zip(completed)
+            .map(|(stage, done)| {
+                vec![
                     if *done {
                         StepStatus::Complete
                     } else {
                         StepStatus::Pending
-                    },
-                )
+                    };
+                    stage.tasks.len()
+                ]
             })
             .collect();
         Ok(Self {
             terminal,
             collection: collection.to_owned(),
-            modules,
+            stages: stages.to_vec(),
+            stage_status,
+            task_status,
             active: 0,
             parser: vt100::Parser::new(24, 120, 500),
         })
@@ -56,21 +73,28 @@ impl Dashboard {
         &mut self,
         installer: &Path,
         forwarded: &[String],
-        module: &str,
+        stage_index: usize,
+        progress_file: &Path,
     ) -> Result<(bool, Option<i32>), String> {
+        let stage = self
+            .stages
+            .get(stage_index)
+            .ok_or("unknown dashboard stage")?;
         let mut command = CommandBuilder::new("bash");
         command.arg(installer);
         for argument in forwarded {
             command.arg(argument);
         }
         command.arg("--only");
-        command.arg(module);
+        command.arg(&stage.id);
         command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
         command.env(
             "MISTBORN_RUNNER_BINARY",
             std::env::current_exe().map_err(|error| error.to_string())?,
         );
-        self.run_child(module, command)
+        command.env("MISTBORN_PROGRESS_FILE", progress_file);
+        command.env("MISTBORN_PROGRESS_STAGE", &stage.id);
+        self.run_child(stage_index, command, progress_file)
     }
 
     pub fn run_host_command(
@@ -78,6 +102,7 @@ impl Dashboard {
         script: &Path,
         arguments: &[String],
         operation: &str,
+        progress_file: &Path,
     ) -> Result<(bool, Option<i32>), String> {
         let mut command = CommandBuilder::new("bash");
         command.arg(script);
@@ -85,7 +110,18 @@ impl Dashboard {
             command.arg(argument);
         }
         command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
-        self.run_child(operation, command)
+        command.env("MISTBORN_PROGRESS_FILE", progress_file);
+        command.env("MISTBORN_PROGRESS_STAGE", "bootstrap");
+        command.env(
+            "MISTBORN_BOOTSTRAP_VERSION",
+            format!("v{}", env!("CARGO_PKG_VERSION")),
+        );
+        let stage_index = self
+            .stages
+            .iter()
+            .position(|stage| stage.id == operation)
+            .unwrap_or(0);
+        self.run_child(stage_index, command, progress_file)
     }
 
     pub fn screen_contents(&self) -> String {
@@ -94,15 +130,13 @@ impl Dashboard {
 
     fn run_child(
         &mut self,
-        step: &str,
+        stage_index: usize,
         command: CommandBuilder,
+        progress_file: &Path,
     ) -> Result<(bool, Option<i32>), String> {
-        self.active = self
-            .modules
-            .iter()
-            .position(|(name, _)| name == step)
-            .ok_or_else(|| format!("unknown dashboard step: {step}"))?;
-        self.modules[self.active].1 = StepStatus::Running;
+        self.active = stage_index;
+        self.stage_status[self.active] = StepStatus::Running;
+        self.task_status[self.active].fill(StepStatus::Pending);
         self.parser = vt100::Parser::new(24, 120, 500);
 
         let pair = native_pty_system()
@@ -136,31 +170,90 @@ impl Dashboard {
             }
         });
 
+        let mut seen_events = 0;
         loop {
+            ingest_events(
+                progress_file,
+                &mut seen_events,
+                &self.stages,
+                &mut self.stage_status,
+                &mut self.task_status,
+                &mut self.active,
+            )?;
             while let Ok(bytes) = receiver.try_recv() {
                 self.parser.process(&bytes);
             }
             let output = self.parser.screen().contents();
             let collection = &self.collection;
-            let modules = &self.modules;
+            let stages = &self.stages;
+            let stage_status = &self.stage_status;
+            let task_status = &self.task_status;
             let active = self.active;
             self.terminal
-                .draw(|frame| draw(frame, collection, modules, active, &output))
+                .draw(|frame| {
+                    draw(
+                        frame,
+                        collection,
+                        stages,
+                        stage_status,
+                        task_status,
+                        active,
+                        &output,
+                    )
+                })
                 .map_err(|error| error.to_string())?;
 
             if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
                 while let Ok(bytes) = receiver.try_recv() {
                     self.parser.process(&bytes);
                 }
-                self.modules[self.active].1 = if status.success() {
+                ingest_events(
+                    progress_file,
+                    &mut seen_events,
+                    &self.stages,
+                    &mut self.stage_status,
+                    &mut self.task_status,
+                    &mut self.active,
+                )?;
+                self.stage_status[self.active] = if status.success() {
                     StepStatus::Complete
                 } else {
                     StepStatus::Failed
                 };
+                if status.success() {
+                    for task in &mut self.task_status[self.active] {
+                        if *task == StepStatus::Pending {
+                            *task = StepStatus::Skipped;
+                        }
+                    }
+                } else {
+                    let mut marked_failure = false;
+                    for task in &mut self.task_status[self.active] {
+                        if *task == StepStatus::Running {
+                            *task = StepStatus::Failed;
+                            marked_failure = true;
+                        }
+                    }
+                    if !marked_failure
+                        && let Some(task) = self.task_status[self.active]
+                            .iter_mut()
+                            .find(|task| **task == StepStatus::Pending)
+                    {
+                        *task = StepStatus::Failed;
+                    }
+                }
                 let output = self.parser.screen().contents();
                 self.terminal
                     .draw(|frame| {
-                        draw(frame, &self.collection, &self.modules, self.active, &output)
+                        draw(
+                            frame,
+                            &self.collection,
+                            &self.stages,
+                            &self.stage_status,
+                            &self.task_status,
+                            self.active,
+                            &output,
+                        )
                     })
                     .map_err(|error| error.to_string())?;
                 return Ok((status.success(), Some(status.exit_code() as i32)));
@@ -203,7 +296,9 @@ impl Drop for Dashboard {
 fn draw(
     frame: &mut Frame,
     collection: &str,
-    modules: &[(String, StepStatus)],
+    stages: &[Stage],
+    stage_status: &[StepStatus],
+    task_status: &[Vec<StepStatus>],
     active: usize,
     terminal_output: &str,
 ) {
@@ -220,14 +315,15 @@ fn draw(
         .constraints([Constraint::Percentage(48), Constraint::Percentage(52)])
         .split(body[0]);
 
-    let items: Vec<ListItem> = modules
+    let items: Vec<ListItem> = stages
         .iter()
         .enumerate()
-        .map(|(index, (name, status))| {
-            let (marker, color) = match status {
+        .map(|(index, stage)| {
+            let (marker, color) = match stage_status[index] {
                 StepStatus::Pending => ("○", Color::DarkGray),
                 StepStatus::Running => ("▶", Color::Cyan),
                 StepStatus::Complete => ("✓", Color::Green),
+                StepStatus::Skipped => ("–", Color::DarkGray),
                 StepStatus::Failed => ("✗", Color::Red),
             };
             let style = if index == active {
@@ -235,7 +331,7 @@ fn draw(
             } else {
                 Style::default().fg(color)
             };
-            ListItem::new(format!(" {marker} {name}")).style(style)
+            ListItem::new(format!(" {marker} {}", stage.title)).style(style)
         })
         .collect();
     frame.render_widget(
@@ -246,11 +342,38 @@ fn draw(
         ),
         top[0],
     );
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
+        .split(top[1]);
     frame.render_widget(
-        Paragraph::new(help_for(&modules[active].0))
+        Paragraph::new(stages[active].help.as_str())
             .wrap(Wrap { trim: true })
             .block(Block::default().title(" Help ").borders(Borders::ALL)),
-        top[1],
+        right[0],
+    );
+    let tasks: Vec<ListItem> = stages[active]
+        .tasks
+        .iter()
+        .enumerate()
+        .map(|(index, task)| {
+            let (marker, color) = match task_status[active][index] {
+                StepStatus::Pending => ("○", Color::DarkGray),
+                StepStatus::Running => ("▶", Color::Cyan),
+                StepStatus::Complete => ("✓", Color::Green),
+                StepStatus::Skipped => ("–", Color::DarkGray),
+                StepStatus::Failed => ("✗", Color::Red),
+            };
+            ListItem::new(format!(" {marker} {}", task.title)).style(Style::default().fg(color))
+        })
+        .collect();
+    frame.render_widget(
+        List::new(tasks).block(
+            Block::default()
+                .title(" Stage tasks ")
+                .borders(Borders::ALL),
+        ),
+        right[1],
     );
     frame.render_widget(
         Paragraph::new(terminal_output.to_owned())
@@ -258,11 +381,37 @@ fn draw(
             .block(Block::default().title(" Terminal ").borders(Borders::ALL)),
         body[1],
     );
-    let completed = modules
+    let total_weight: u64 = stages
         .iter()
-        .filter(|(_, status)| *status == StepStatus::Complete)
-        .count();
-    let ratio = completed as f64 / modules.len().max(1) as f64;
+        .flat_map(|stage| &stage.tasks)
+        .map(|task| u64::from(task.weight))
+        .sum();
+    let completed_weight: u64 = stages
+        .iter()
+        .enumerate()
+        .flat_map(|(stage_index, stage)| {
+            stage
+                .tasks
+                .iter()
+                .enumerate()
+                .filter_map(move |(task_index, task)| {
+                    matches!(
+                        task_status[stage_index][task_index],
+                        StepStatus::Complete | StepStatus::Skipped
+                    )
+                    .then_some(u64::from(task.weight))
+                })
+        })
+        .sum();
+    let ratio = if total_weight == 0 {
+        stage_status
+            .iter()
+            .filter(|status| **status == StepStatus::Complete)
+            .count() as f64
+            / stages.len().max(1) as f64
+    } else {
+        completed_weight as f64 / total_weight as f64
+    };
     frame.render_widget(
         Gauge::default()
             .block(
@@ -273,46 +422,63 @@ fn draw(
             .gauge_style(Style::default().fg(Color::Cyan).bg(Color::Black))
             .ratio(ratio)
             .label(format!(
-                "{completed}/{} · {:.0}%",
-                modules.len(),
+                "{completed_weight}/{total_weight} · {:.0}%",
                 ratio * 100.0
             )),
         outer[1],
     );
 }
 
-fn help_for(module: &str) -> &'static str {
-    match module {
-        "status" => {
-            "Read-only overview of installed components, service health, and Tailscale connectivity."
+fn ingest_events(
+    path: &Path,
+    seen: &mut usize,
+    stages: &[Stage],
+    stage_status: &mut [StepStatus],
+    task_status: &mut [Vec<StepStatus>],
+    active: &mut usize,
+) -> Result<(), String> {
+    let contents = match std::fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let lines: Vec<&str> = contents.lines().collect();
+    for line in lines.iter().skip(*seen) {
+        let mut fields = line.split('\t');
+        let (Some(stage_id), Some(task_id), Some(state)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        let Some(stage_index) = stages.iter().position(|stage| stage.id == stage_id) else {
+            continue;
+        };
+        let Some(task_index) = stages[stage_index]
+            .tasks
+            .iter()
+            .position(|task| task.id == task_id)
+        else {
+            continue;
+        };
+        let status = match state {
+            "started" => StepStatus::Running,
+            "completed" => StepStatus::Complete,
+            "skipped" => StepStatus::Skipped,
+            "failed" => StepStatus::Failed,
+            _ => continue,
+        };
+        *active = stage_index;
+        stage_status[stage_index] = StepStatus::Running;
+        task_status[stage_index][task_index] = status;
+        if task_status[stage_index]
+            .iter()
+            .all(|status| matches!(status, StepStatus::Complete | StepStatus::Skipped))
+        {
+            stage_status[stage_index] = StepStatus::Complete;
         }
-        "doctor" => "Runs read-only diagnostics. Review each warning before choosing a repair.",
-        "fix" => {
-            "Enables and starts Docker and Tailscale services. SSH and firewall settings are not changed."
-        }
-        "update" => {
-            "Updates Runtipi core, app stores, and apps. App snapshots are created before updates."
-        }
-        "update-apps" => {
-            "Updates selected apps or all installed apps, creating snapshots by default."
-        }
-        "update-core" => "Updates the Runtipi core after creating app snapshots by default.",
-        "tailscale" => {
-            "Authenticate with the URL shown below. Exit nodes also require approval in the Tailscale admin console."
-        }
-        "rclone" => {
-            "Answer the prompts in the terminal pane. Input is sent directly to rclone through an embedded PTY."
-        }
-        "security" => {
-            "Keep a second SSH session open. Confirm key-based or Tailscale SSH access before disconnecting."
-        }
-        "docker" => "Installs and enables Docker Engine.",
-        "runtipi" => {
-            "Installs Runtipi using its official installer when it is not already present."
-        }
-        "zsh" => "Installs Zsh, Oh My Zsh, and Powerlevel10k for the selected target user.",
-        _ => "Installer output appears below. Ctrl-C is forwarded to the active process.",
     }
+    *seen = lines.len();
+    Ok(())
 }
 
 fn encode_key(key: KeyEvent) -> Option<Vec<u8>> {

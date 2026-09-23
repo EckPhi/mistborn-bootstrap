@@ -1,0 +1,17 @@
+version = 1
+collection = "update"
+
+[[stages]]
+id = "bootstrap"
+title = "Mistborn Bootstrap"
+help = "Checks the latest stable release and reruns its installer to refresh the Mistborn tool while resuming completed setup stages."
+[[stages.tasks]]
+id = "release"
+title = "Check latest stable bootstrap release"
+action = "GitHub releases/latest"
+weight = 1
+[[stages.tasks]]
+id = "installer"
+title = "Refresh Mistborn runner and command"
+action = "run tagged server installer (resume completed stages)"
+weight = 3

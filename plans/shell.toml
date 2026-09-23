@@ -1,0 +1,42 @@
+version = 1
+collection = "shell"
+
+[[stages]]
+id = "common"
+title = "System prerequisites"
+help = "Refreshes apt metadata and installs the tools used by later stages."
+[[stages.tasks]]
+id = "apt-index"
+title = "Refresh package metadata"
+action = "apt-get update"
+weight = 1
+[[stages.tasks]]
+id = "base-packages"
+title = "Install prerequisite packages"
+action = "apt-get install ca-certificates curl git"
+weight = 1
+
+[[stages]]
+id = "zsh"
+title = "Zsh and plugins"
+help = "Installs Zsh, Oh My Zsh, Powerlevel10k, and configures the target user."
+[[stages.tasks]]
+id = "packages"
+title = "Install Zsh and Git"
+action = "apt-get install zsh git"
+weight = 1
+[[stages.tasks]]
+id = "oh-my-zsh"
+title = "Install or detect Oh My Zsh"
+action = "git clone ohmyzsh/ohmyzsh"
+weight = 2
+[[stages.tasks]]
+id = "powerlevel10k"
+title = "Install or detect Powerlevel10k"
+action = "git clone romkatv/powerlevel10k"
+weight = 2
+[[stages.tasks]]
+id = "configuration"
+title = "Configure the target user's shell"
+action = "configure zsh and .zshrc"
+weight = 1

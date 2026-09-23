@@ -8,13 +8,19 @@ module_rclone_apply() {
   home="$(mistborn_user_home "$user")"
   [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
   ui_step "$module_rclone_description"
+  mistborn_task_start package
   mistborn_apt_install rclone
+  mistborn_task_complete package
   if [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
+    mistborn_task_start configuration
     if [[ "$user" == root ]]; then
       mistborn_run_interactive env HOME="$home" rclone config
     else
       mistborn_run_interactive runuser -u "$user" -- env HOME="$home" rclone config
     fi
+    mistborn_task_complete configuration
+  else
+    mistborn_task_skip configuration
   fi
   ui_success "$module_rclone_description"
 }

@@ -7,6 +7,8 @@ module_security_apply() {
   ui_step "$module_security_description"
   if [[ "${MISTBORN_HARDEN:-0}" != 1 ]]; then
     ui_warn "Security hardening is opt-in; re-run with MISTBORN_HARDEN=1 after testing SSH keys"
+    for task in packages ssh firewall fail2ban; do mistborn_task_skip "$task"; done
+    mistborn_task_skip tailscale-only
     return 0
   fi
   if [[ "${MISTBORN_DISABLE_PASSWORD_AUTH:-1}" == 1 && "${MISTBORN_DRY_RUN:-0}" != 1 ]]; then
@@ -17,7 +19,10 @@ module_security_apply() {
       return 1
     fi
   fi
+  mistborn_task_start packages
   mistborn_apt_install ufw fail2ban
+  mistborn_task_complete packages
+  mistborn_task_start ssh
   if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
     ui_info "Would harden $ssh_config and validate it before restart"
   else
@@ -36,17 +41,26 @@ module_security_apply() {
     printf '[sshd]\nenabled = true\nport = ssh\nmaxretry = %s\nbantime = %s\n' \
       "${MISTBORN_FAIL2BAN_MAXRETRY:-3}" "${MISTBORN_FAIL2BAN_BANTIME:-3600}" >/etc/fail2ban/jail.local
   fi
+  mistborn_task_complete ssh
+  mistborn_task_start firewall
   mistborn_run ufw allow "$ssh_port/tcp"
   for port in ${MISTBORN_ALLOWED_TCP_PORTS:-}; do mistborn_run ufw allow "$port/tcp"; done
   mistborn_run ufw default deny incoming
   mistborn_run ufw --force enable
+  mistborn_task_complete firewall
+  mistborn_task_start fail2ban
   mistborn_run systemctl enable --now fail2ban
+  mistborn_task_complete fail2ban
   if [[ "${MISTBORN_TAILSCALE_ONLY:-0}" == 1 ]]; then
+    mistborn_task_start tailscale-only
     mistborn_run tailscale set --ssh=true
     mistborn_run ufw allow in on tailscale0
     mistborn_run ufw allow "${MISTBORN_TAILSCALE_PORT:-41641}/udp"
     mistborn_run ufw delete allow "$ssh_port/tcp" || true
+    mistborn_task_complete tailscale-only
     ui_warn "Confirm a new Tailscale SSH session before disconnecting"
+  else
+    mistborn_task_skip tailscale-only
   fi
   ui_success "$module_security_description"
 }

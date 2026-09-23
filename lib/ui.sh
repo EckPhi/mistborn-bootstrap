@@ -15,6 +15,15 @@ ui_warn() { printf '  %s!%s %s\n' "$(ui_color 33)" "$(ui_reset)" "$1" >&2; }
 ui_error() { printf '  %s✗%s %s\n' "$(ui_color 31)" "$(ui_reset)" "$1" >&2; }
 ui_step() { printf '\n%s==>%s %s\n' "$(ui_color '1;34')" "$(ui_reset)" "$1"; }
 
+mistborn_task_event() {
+  local stage="$1" task="$2" state="$3"
+  [[ -n "${MISTBORN_PROGRESS_FILE:-}" ]] || return 0
+  printf '%s\t%s\t%s\n' "$stage" "$task" "$state" >>"$MISTBORN_PROGRESS_FILE" || true
+}
+mistborn_task_start() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" started; }
+mistborn_task_complete() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" completed; }
+mistborn_task_skip() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" skipped; }
+
 ui_confirm() {
   local prompt="$1" reply
   [[ "${MISTBORN_YES:-0}" == 1 ]] && return 0
