@@ -12,7 +12,7 @@ Security hardening is included but deliberately opt-in.
 Review the script, then run the pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.3.0/dist/server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh | sudo bash
 ```
 
 Interactive setup steps reconnect to the controlling terminal, so they also
@@ -20,14 +20,14 @@ work when the installer itself is piped to Bash. For unattended Tailscale
 enrollment, provide a [pre-authentication key](https://tailscale.com/kb/1085/auth-keys):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.3.0/dist/server.sh \
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh \
   | sudo env TAILSCALE_AUTH_KEY='tskey-auth-...' bash
 ```
 
 Use `--dry-run`, `--yes`, or `--user NAME` after `bash -s --`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.3.0/dist/server.sh | sudo bash -s -- --dry-run --user phil
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh | sudo bash -s -- --dry-run --user phil
 ```
 
 ## Development

@@ -160,6 +160,7 @@ module_zsh_apply() {
 module_tailscale_description="Tailscale"
 
 module_tailscale_apply() {
+  local sysctl_file=/etc/sysctl.d/99-mistborn-tailscale.conf
   ui_step "$module_tailscale_description"
   if command -v tailscale >/dev/null 2>&1; then
     ui_info "Tailscale already installed"
@@ -167,6 +168,14 @@ module_tailscale_apply() {
     ui_info "Would install Tailscale from packages.tailscale.com"
   else
     curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+  if [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]]; then
+    if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
+      ui_info "Would enable persistent IPv4 and IPv6 forwarding in $sysctl_file"
+    else
+      printf '%s\n' 'net.ipv4.ip_forward = 1' 'net.ipv6.conf.all.forwarding = 1' >"$sysctl_file"
+      sysctl -p "$sysctl_file"
+    fi
   fi
   local args=(up)
   [[ "${MISTBORN_TAILSCALE_SSH:-0}" == 1 ]] && args+=(--ssh)
@@ -176,6 +185,9 @@ module_tailscale_apply() {
     mistborn_run tailscale "${args[@]}"
   else
     mistborn_run_interactive tailscale "${args[@]}"
+  fi
+  if [[ "${MISTBORN_TAILSCALE_AUTO_UPDATE:-0}" == 1 ]]; then
+    mistborn_run tailscale set --auto-update
   fi
   ui_success "$module_tailscale_description"
 }
@@ -199,12 +211,18 @@ module_runtipi_apply() {
 module_rclone_description="rclone"
 
 module_rclone_apply() {
-  local user
+  local user home
   user="$(mistborn_target_user)"
+  home="$(mistborn_user_home "$user")"
+  [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
   ui_step "$module_rclone_description"
   mistborn_apt_install rclone
   if [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
-    mistborn_run_interactive sudo -H -u "$user" rclone config
+    if [[ "$user" == root ]]; then
+      mistborn_run_interactive env HOME="$home" rclone config
+    else
+      mistborn_run_interactive runuser -u "$user" -- env HOME="$home" rclone config
+    fi
   fi
   ui_success "$module_rclone_description"
 }

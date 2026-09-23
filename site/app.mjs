@@ -22,6 +22,7 @@ export function buildCommand(config) {
   if (config.collection === "server") {
     if (config.tailscaleSsh) environment.push("MISTBORN_TAILSCALE_SSH=1");
     if (config.exitNode) environment.push("MISTBORN_TAILSCALE_EXIT_NODE=1");
+    if (config.tailscaleAutoUpdate) environment.push("MISTBORN_TAILSCALE_AUTO_UPDATE=1");
     if (config.rclone) environment.push("MISTBORN_RCLONE_CONFIGURE=1");
     if (config.harden) {
       environment.push("MISTBORN_HARDEN=1", `MISTBORN_SSH_PORT=${config.sshPort}`);
@@ -43,6 +44,7 @@ export function summarize(config) {
   if (config.user) items.push(`Configure shell tools for ${config.user}`);
   if (config.tailscaleSsh && config.collection === "server") items.push("Enable Tailscale SSH");
   if (config.exitNode && config.collection === "server") items.push("Advertise a Tailscale exit node");
+  if (config.tailscaleAutoUpdate && config.collection === "server") items.push("Automatically install Tailscale updates");
   if (config.rclone && config.collection === "server") items.push("Open interactive rclone configuration");
   if (config.harden && config.collection === "server") {
     items.push(`Harden SSH on port ${config.sshPort} and enable UFW/fail2ban`);
@@ -63,6 +65,7 @@ function readConfig() {
     yes: document.querySelector("#yes").checked,
     tailscaleSsh: document.querySelector("#tailscale-ssh").checked,
     exitNode: document.querySelector("#exit-node").checked,
+    tailscaleAutoUpdate: document.querySelector("#tailscale-auto-update").checked,
     rclone: document.querySelector("#rclone").checked,
     harden: document.querySelector("#harden").checked,
     sshPort: Number(document.querySelector("#ssh-port").value),
