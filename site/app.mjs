@@ -14,10 +14,13 @@ export function validate(config) {
 }
 
 export function buildCommand(config) {
-  const url = `${repository}/${config.release}/dist/${config.collection}.sh`;
+  const version = /^v(\d+)\.(\d+)/.exec(config.release);
+  const usesLauncher = version && (Number(version[1]) > 0 || Number(version[2]) >= 5);
+  const source = usesLauncher ? "install.sh" : `dist/${config.collection}.sh`;
+  const url = `${repository}/${config.release}/${source}`;
   const download = config.downloader === "wget" ? `wget -qO- ${url}` : `curl -fsSL ${url}`;
   const environment = [];
-  const arguments_ = [];
+  const arguments_ = usesLauncher ? [config.collection] : [];
 
   if (config.collection === "server") {
     if (config.tailscaleSsh) environment.push("MISTBORN_TAILSCALE_SSH=1");

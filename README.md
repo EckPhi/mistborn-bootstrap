@@ -12,22 +12,23 @@ Security hardening is included but deliberately opt-in.
 Review the script, then run the pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh | sudo bash -s -- server
 ```
 
-Interactive setup steps reconnect to the controlling terminal, so they also
-work when the installer itself is piped to Bash. For unattended Tailscale
+The launcher downloads the CI-built binary for x86-64 or ARM64, verifies its
+release checksum, and reconnects the dashboard to the controlling terminal.
+For unattended Tailscale
 enrollment, provide a [pre-authentication key](https://tailscale.com/kb/1085/auth-keys):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh \
-  | sudo env TAILSCALE_AUTH_KEY='tskey-auth-...' bash
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh \
+  | sudo env TAILSCALE_AUTH_KEY='tskey-auth-...' bash -s -- server
 ```
 
-Use `--dry-run`, `--yes`, or `--user NAME` after `bash -s --`:
+Pass the collection first, followed by `--dry-run`, `--yes`, or `--user NAME`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh | sudo bash -s -- --dry-run --user phil
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh | sudo bash -s -- server --dry-run --user phil
 ```
 
 ## Development
@@ -42,6 +43,9 @@ sudo ./dist/server.sh --dry-run --yes --user "$USER"
 
 Generated files in `dist/` are committed so release URLs remain simple and
 auditable. CI rebuilds them and fails when the checked-in output has drifted.
+Release tags compile static Linux binaries for x86-64 and ARM64 in GitHub
+Actions, publish SHA-256 checksums, and create the GitHub release. Rust is not
+required on the target server.
 
 ## Resumable runner
 
@@ -79,6 +83,6 @@ App and core updates create native Runtipi app snapshots first. Pass
 Enable hardening only after confirming key-based SSH access:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/main/dist/server.sh \
-  | sudo env MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=22 bash
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh \
+  | sudo env MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=22 bash -s -- server
 ```

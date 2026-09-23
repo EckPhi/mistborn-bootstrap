@@ -17,6 +17,10 @@ mistborn_run_interactive() {
     printf '  [dry-run]'; printf ' %q' "$@"; printf '\n'
     return 0
   fi
+  if [[ "${MISTBORN_EMBEDDED_TERMINAL:-0}" == 1 ]]; then
+    "$@"
+    return
+  fi
   if ! mistborn_has_terminal; then
     ui_error "This step requires a terminal. Run the downloaded installer directly or use its non-interactive option."
     return 1
