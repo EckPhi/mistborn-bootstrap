@@ -160,9 +160,9 @@ main() {
     done
     [[ "$known" == 1 ]] || { ui_error "Unknown module: $MISTBORN_ONLY"; return 2; }
   fi
-  ui_header "Mistborn shell setup"
+  [[ -n "$MISTBORN_ONLY" ]] || ui_header "Mistborn shell setup"
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != common ]] || module_common_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != zsh ]] || module_zsh_apply
-  ui_header "Setup complete"
+  [[ -n "$MISTBORN_ONLY" ]] || ui_header "Setup complete"
 }
 main "$@"

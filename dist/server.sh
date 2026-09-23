@@ -293,7 +293,7 @@ main() {
     done
     [[ "$known" == 1 ]] || { ui_error "Unknown module: $MISTBORN_ONLY"; return 2; }
   fi
-  ui_header "Mistborn server setup"
+  [[ -n "$MISTBORN_ONLY" ]] || ui_header "Mistborn server setup"
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != common ]] || module_common_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != docker ]] || module_docker_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != zsh ]] || module_zsh_apply
@@ -302,6 +302,6 @@ main() {
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != rclone ]] || module_rclone_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != security ]] || module_security_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != toolset ]] || module_toolset_apply
-  ui_header "Setup complete"
+  [[ -n "$MISTBORN_ONLY" ]] || ui_header "Setup complete"
 }
 main "$@"

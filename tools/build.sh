@@ -46,7 +46,7 @@ main() {
     done
     [[ "\$known" == 1 ]] || { ui_error "Unknown module: \$MISTBORN_ONLY"; return 2; }
   fi
-  ui_header "Mistborn $collection setup"
+  [[ -n "\$MISTBORN_ONLY" ]] || ui_header "Mistborn $collection setup"
 RUNNER
     while IFS= read -r module; do
       [[ -z "$module" || "$module" == \#* ]] && continue
@@ -54,7 +54,9 @@ RUNNER
       # shellcheck disable=SC2016
       printf '  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != %q ]] || module_%s_apply\n' "$module" "$module"
     done <"$root/collections/$collection.modules"
-    printf '%s\n' '  ui_header "Setup complete"' '}' 'main "$@"'
+    # MISTBORN_ONLY belongs to the generated script, not this generator.
+    # shellcheck disable=SC2016
+    printf '%s\n' '  [[ -n "$MISTBORN_ONLY" ]] || ui_header "Setup complete"' '}' 'main "$@"'
   } >"$output"
   chmod +x "$output"
   bash -n "$output"

@@ -1,3 +1,5 @@
+mod progress;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -6,7 +8,9 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use progress::ProgressView;
 
 #[derive(Debug)]
 struct Options {
@@ -177,6 +181,16 @@ fn execute(options: Options) -> Result<(), String> {
         .state_dir
         .join(format!("{}.json", options.collection));
     let mut state = load_state(&state_path, &options.collection)?;
+    let already_completed = modules
+        .iter()
+        .filter(|module| {
+            state
+                .modules
+                .get(*module)
+                .is_some_and(|entry| entry.status == "completed")
+        })
+        .count();
+    let mut progress = ProgressView::new(&options.collection, already_completed, modules.len());
     let run_id = run_id();
     let log_path = options.log_dir.join(format!("{run_id}.jsonl"));
     let file = OpenOptions::new()
@@ -194,7 +208,7 @@ fn execute(options: Options) -> Result<(), String> {
             .get(&module)
             .is_some_and(|entry| entry.status == "completed")
         {
-            println!("✓ {module} (already completed)");
+            progress.skipped(&module);
             log.emit(json!({"at": now(), "event": "module_skipped", "module": module, "reason": "completed"}))
                 .map_err(|error| error.to_string())?;
             continue;
@@ -204,7 +218,7 @@ fn execute(options: Options) -> Result<(), String> {
             .modules
             .get(&module)
             .map_or(1, |entry| entry.attempts + 1);
-        println!("▶ {module}");
+        progress.started(&module, attempts);
         log.emit(
             json!({"at": now(), "event": "module_started", "module": module, "attempt": attempts}),
         )
@@ -220,6 +234,7 @@ fn execute(options: Options) -> Result<(), String> {
         state.updated_at = now();
         save_state(&state_path, &state)?;
 
+        let started_at = Instant::now();
         let status = Command::new("bash")
             .arg(&installer)
             .args(&options.forwarded)
@@ -228,6 +243,7 @@ fn execute(options: Options) -> Result<(), String> {
             .status()
             .map_err(|error| format!("failed to start {module}: {error}"))?;
         let succeeded = status.success();
+        let elapsed = started_at.elapsed();
         state.modules.insert(
             module.clone(),
             ModuleState {
@@ -238,18 +254,20 @@ fn execute(options: Options) -> Result<(), String> {
         );
         state.updated_at = now();
         save_state(&state_path, &state)?;
-        log.emit(json!({"at": now(), "event": if succeeded { "module_completed" } else { "module_failed" }, "module": module, "exit_code": status.code()}))
+        log.emit(json!({"at": now(), "event": if succeeded { "module_completed" } else { "module_failed" }, "module": module, "exit_code": status.code(), "elapsed_ms": elapsed.as_millis()}))
             .map_err(|error| error.to_string())?;
         if !succeeded {
+            progress.failed(&module, elapsed);
             return Err(format!(
                 "module {module} failed; rerun the same command to resume"
             ));
         }
+        progress.completed(&module, elapsed);
     }
 
     log.emit(json!({"at": now(), "event": "run_completed", "run_id": run_id, "collection": options.collection}))
         .map_err(|error| error.to_string())?;
-    println!("✓ {} complete", options.collection);
+    progress.finish();
     println!("  state: {}", state_path.display());
     println!("  log:   {}", log_path.display());
     Ok(())
@@ -314,7 +332,12 @@ mod tests {
             serde_json::from_reader(File::open(state_dir.join("test.json")).unwrap()).unwrap();
         assert_eq!(state.modules["first"].status, "completed");
         assert_eq!(state.modules["second"].attempts, 2);
-        assert_eq!(fs::read_dir(log_dir).unwrap().count(), 2);
+        assert_eq!(fs::read_dir(&log_dir).unwrap().count(), 2);
+        assert!(fs::read_dir(&log_dir).unwrap().any(|entry| {
+            fs::read_to_string(entry.unwrap().path())
+                .unwrap()
+                .contains("\"elapsed_ms\"")
+        }));
 
         fs::remove_dir_all(base).unwrap();
     }
