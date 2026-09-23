@@ -2,7 +2,7 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Wrap};
 use ratatui::{DefaultTerminal, Frame};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -27,6 +27,34 @@ enum CommandStatus {
 }
 
 impl CommandDashboard {
+    pub fn select_command() -> Result<Option<&'static str>, String> {
+        let terminal = ratatui::try_init().map_err(|error| error.to_string())?;
+        let mut menu = CommandMenu { terminal };
+        let mut selected = 0;
+        loop {
+            menu.draw(selected)?;
+            if !event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
+                continue;
+            }
+            match event::read().map_err(|error| error.to_string())? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        selected = selected.checked_sub(1).unwrap_or(MENU_COMMANDS.len() - 1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        selected = (selected + 1) % MENU_COMMANDS.len();
+                    }
+                    KeyCode::Enter => {
+                        return Ok(MENU_COMMANDS[selected].operation);
+                    }
+                    KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+
     pub fn new(operation: &str, command: &str) -> Result<Self, String> {
         let terminal = ratatui::try_init().map_err(|error| error.to_string())?;
         Ok(Self {
@@ -159,6 +187,148 @@ impl CommandDashboard {
             .map_err(|error| error.to_string())
     }
 }
+
+struct CommandMenu {
+    terminal: DefaultTerminal,
+}
+
+impl CommandMenu {
+    fn draw(&mut self, selected: usize) -> Result<(), String> {
+        self.terminal
+            .draw(|frame| {
+                let areas = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(3),
+                        Constraint::Min(8),
+                        Constraint::Length(3),
+                    ])
+                    .split(frame.area());
+                frame.render_widget(
+                    Paragraph::new("Choose a Mistborn command")
+                        .style(
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .block(Block::default().borders(Borders::ALL).title(" Mistborn ")),
+                    areas[0],
+                );
+                let columns = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(44), Constraint::Percentage(56)])
+                    .split(areas[1]);
+                let commands = MENU_COMMANDS
+                    .iter()
+                    .enumerate()
+                    .map(|(index, command)| {
+                        let marker = if index == selected { "▶" } else { " " };
+                        let style = if index == selected {
+                            Style::default()
+                                .fg(Color::Cyan)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        };
+                        ListItem::new(format!(" {marker} {}", command.label)).style(style)
+                    })
+                    .collect::<Vec<_>>();
+                frame.render_widget(
+                    List::new(commands)
+                        .block(Block::default().borders(Borders::ALL).title(" Commands ")),
+                    columns[0],
+                );
+                frame.render_widget(
+                    Paragraph::new(MENU_COMMANDS[selected].help)
+                        .wrap(Wrap { trim: true })
+                        .block(Block::default().borders(Borders::ALL).title(" Help ")),
+                    columns[1],
+                );
+                frame.render_widget(
+                    Paragraph::new("↑/↓ or j/k move · Enter run · q/Esc quit")
+                        .block(Block::default().borders(Borders::ALL).title(" Controls ")),
+                    areas[2],
+                );
+            })
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl Drop for CommandMenu {
+    fn drop(&mut self) {
+        let _ = ratatui::try_restore();
+    }
+}
+
+struct MenuCommand {
+    label: &'static str,
+    operation: Option<&'static str>,
+    help: &'static str,
+}
+
+const MENU_COMMANDS: &[MenuCommand] = &[
+    MenuCommand {
+        label: "Status",
+        operation: Some("status"),
+        help: "Read-only overview of installed components, service health, and Tailscale connectivity.",
+    },
+    MenuCommand {
+        label: "Doctor",
+        operation: Some("doctor"),
+        help: "Audit Docker, Runtipi, Tailscale, rclone, and security tools for common issues.",
+    },
+    MenuCommand {
+        label: "Fix services",
+        operation: Some("fix"),
+        help: "Enable and start installed Docker and Tailscale services. SSH and firewall settings are left unchanged.",
+    },
+    MenuCommand {
+        label: "Security status",
+        operation: Some("security-status"),
+        help: "Review SSH daemon policy, firewall rules, fail2ban, and Tailscale status.",
+    },
+    MenuCommand {
+        label: "Tailscale status",
+        operation: Some("tailscale-status"),
+        help: "Show current Tailscale connectivity and peer status.",
+    },
+    MenuCommand {
+        label: "Configure rclone",
+        operation: Some("rclone-config"),
+        help: "Open rclone's interactive configuration. Answers are forwarded to its terminal session.",
+    },
+    MenuCommand {
+        label: "Upgrade Mistborn",
+        operation: Some("upgrade"),
+        help: "Check for the latest stable Mistborn Bootstrap release and refresh the installed tool.",
+    },
+    MenuCommand {
+        label: "Update Runtipi",
+        operation: Some("update-runtipi"),
+        help: "Snapshot installed apps, then update Runtipi core, app stores, and apps.",
+    },
+    MenuCommand {
+        label: "Update apps",
+        operation: Some("update-apps"),
+        help: "Update all installed apps with snapshots. You can pass app references or --no-backup to mistborn update-apps.",
+    },
+    MenuCommand {
+        label: "Update core",
+        operation: Some("update-core"),
+        help: "Update Runtipi core (latest by default), with app snapshots unless --no-backup is passed.",
+    },
+    MenuCommand {
+        label: "Update app stores",
+        operation: Some("update-appstores"),
+        help: "Refresh Runtipi app-store metadata.",
+    },
+    MenuCommand {
+        label: "Quit",
+        operation: None,
+        help: "Return to the shell without running a command.",
+    },
+];
 
 impl Drop for CommandDashboard {
     fn drop(&mut self) {

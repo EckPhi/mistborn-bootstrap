@@ -426,11 +426,23 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
             script.display()
         ));
     }
-    let command_arguments = &arguments[3..];
+    let mut command_arguments = arguments[3..].to_vec();
+    let use_dashboard = interactive_terminal();
+    let shows_menu = command_arguments.is_empty()
+        || command_arguments
+            .first()
+            .is_some_and(|command| matches!(command.as_str(), "help" | "-h" | "--help"));
+    if use_dashboard && shows_menu {
+        let Some(operation) = CommandDashboard::select_command()? else {
+            return Ok(());
+        };
+        command_arguments = vec![operation.to_owned()];
+    }
+    let command_arguments = command_arguments.as_slice();
     let operation = command_arguments
         .first()
         .map_or("help", |argument| argument.as_str());
-    if interactive_terminal() {
+    if use_dashboard {
         let command = std::iter::once("mistborn".to_owned())
             .chain(command_arguments.iter().cloned())
             .collect::<Vec<_>>()
