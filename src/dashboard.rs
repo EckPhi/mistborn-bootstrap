@@ -58,11 +58,50 @@ impl Dashboard {
         forwarded: &[String],
         module: &str,
     ) -> Result<(bool, Option<i32>), String> {
+        let mut command = CommandBuilder::new("bash");
+        command.arg(installer);
+        for argument in forwarded {
+            command.arg(argument);
+        }
+        command.arg("--only");
+        command.arg(module);
+        command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
+        command.env(
+            "MISTBORN_RUNNER_BINARY",
+            std::env::current_exe().map_err(|error| error.to_string())?,
+        );
+        self.run_child(module, command)
+    }
+
+    pub fn run_host_command(
+        &mut self,
+        script: &Path,
+        arguments: &[String],
+        operation: &str,
+    ) -> Result<(bool, Option<i32>), String> {
+        let mut command = CommandBuilder::new("bash");
+        command.arg(script);
+        for argument in arguments {
+            command.arg(argument);
+        }
+        command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
+        self.run_child(operation, command)
+    }
+
+    pub fn screen_contents(&self) -> String {
+        self.parser.screen().contents()
+    }
+
+    fn run_child(
+        &mut self,
+        step: &str,
+        command: CommandBuilder,
+    ) -> Result<(bool, Option<i32>), String> {
         self.active = self
             .modules
             .iter()
-            .position(|(name, _)| name == module)
-            .ok_or_else(|| format!("unknown dashboard module: {module}"))?;
+            .position(|(name, _)| name == step)
+            .ok_or_else(|| format!("unknown dashboard step: {step}"))?;
         self.modules[self.active].1 = StepStatus::Running;
         self.parser = vt100::Parser::new(24, 120, 500);
 
@@ -74,14 +113,6 @@ impl Dashboard {
                 pixel_height: 0,
             })
             .map_err(|error| error.to_string())?;
-        let mut command = CommandBuilder::new("bash");
-        command.arg(installer);
-        for argument in forwarded {
-            command.arg(argument);
-        }
-        command.arg("--only");
-        command.arg(module);
-        command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
         let mut child = pair
             .slave
             .spawn_command(command)
@@ -126,6 +157,12 @@ impl Dashboard {
                 } else {
                     StepStatus::Failed
                 };
+                let output = self.parser.screen().contents();
+                self.terminal
+                    .draw(|frame| {
+                        draw(frame, &self.collection, &self.modules, self.active, &output)
+                    })
+                    .map_err(|error| error.to_string())?;
                 return Ok((status.success(), Some(status.exit_code() as i32)));
             }
 
@@ -246,6 +283,20 @@ fn draw(
 
 fn help_for(module: &str) -> &'static str {
     match module {
+        "status" => {
+            "Read-only overview of installed components, service health, and Tailscale connectivity."
+        }
+        "doctor" => "Runs read-only diagnostics. Review each warning before choosing a repair.",
+        "fix" => {
+            "Enables and starts Docker and Tailscale services. SSH and firewall settings are not changed."
+        }
+        "update" => {
+            "Updates Runtipi core, app stores, and apps. App snapshots are created before updates."
+        }
+        "update-apps" => {
+            "Updates selected apps or all installed apps, creating snapshots by default."
+        }
+        "update-core" => "Updates the Runtipi core after creating app snapshots by default.",
         "tailscale" => {
             "Authenticate with the URL shown below. Exit nodes also require approval in the Tailscale admin console."
         }

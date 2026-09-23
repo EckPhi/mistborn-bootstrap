@@ -1,4 +1,55 @@
 const repository = "https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap";
+const selectionFields = {
+  collection: ["collection", "select"],
+  downloader: ["downloader", "select"],
+  release: ["release", "select"],
+  user: ["target-user", "text"],
+  yes: ["yes", "checkbox"],
+  tailscaleSsh: ["tailscale-ssh", "checkbox"],
+  exitNode: ["exit-node", "checkbox"],
+  tailscaleAutoUpdate: ["tailscale-auto-update", "checkbox"],
+  rclone: ["rclone", "checkbox"],
+  harden: ["harden", "checkbox"],
+  sshPort: ["ssh-port", "number"],
+  tcpPorts: ["tcp-ports", "text"],
+  disablePassword: ["disable-password", "checkbox"],
+  tailscaleOnly: ["tailscale-only", "checkbox"],
+};
+
+export function selectionFromURL(search, allowedReleases) {
+  const params = new URLSearchParams(search);
+  const value = (key, fallback) => params.has(key) ? params.get(key) : fallback;
+  const collection = value("collection", "server");
+  const downloader = value("downloader", "curl");
+  const release = value("release", allowedReleases[0] ?? "v0.5.1");
+  const tcpPortsText = value("tcpPorts", "");
+  return {
+    collection: ["server", "shell"].includes(collection) ? collection : "server",
+    downloader: ["curl", "wget"].includes(downloader) ? downloader : "curl",
+    release: allowedReleases.includes(release) ? release : (allowedReleases[0] ?? "v0.5.1"),
+    user: value("user", ""),
+    yes: value("yes", "0") === "1",
+    tailscaleSsh: value("tailscaleSsh", "0") === "1",
+    exitNode: value("exitNode", "0") === "1",
+    tailscaleAutoUpdate: value("tailscaleAutoUpdate", "0") === "1",
+    rclone: value("rclone", "0") === "1",
+    harden: value("harden", "0") === "1",
+    sshPort: Number(value("sshPort", "22")),
+    tcpPorts: tcpPortsText.split(/[\s,]+/).filter(Boolean).map(Number),
+    tcpPortsText,
+    disablePassword: value("disablePassword", "1") === "1",
+    tailscaleOnly: value("tailscaleOnly", "0") === "1",
+  };
+}
+
+export function selectionToSearch(config) {
+  const params = new URLSearchParams();
+  for (const key of Object.keys(selectionFields)) {
+    const value = key === "tcpPorts" ? config.tcpPortsText : config[key];
+    params.set(key, key === "tcpPorts" ? (value ?? "") : typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+  }
+  return params.toString();
+}
 
 export function shellQuote(value) {
   if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
@@ -59,7 +110,8 @@ export function summarize(config) {
 }
 
 function readConfig() {
-  const tcpPorts = document.querySelector("#tcp-ports").value.split(/[\s,]+/).filter(Boolean).map(Number);
+  const tcpPortsText = document.querySelector("#tcp-ports").value;
+  const tcpPorts = tcpPortsText.split(/[\s,]+/).filter(Boolean).map(Number);
   return {
     collection: document.querySelector("#collection").value,
     downloader: document.querySelector("#downloader").value,
@@ -73,6 +125,7 @@ function readConfig() {
     harden: document.querySelector("#harden").checked,
     sshPort: Number(document.querySelector("#ssh-port").value),
     tcpPorts,
+    tcpPortsText,
     disablePassword: document.querySelector("#disable-password").checked,
     tailscaleOnly: document.querySelector("#tailscale-only").checked,
   };
@@ -88,9 +141,20 @@ function render() {
   document.querySelector("#error").textContent = errors.join(" ");
   document.querySelector("#copy").disabled = errors.length > 0;
   document.querySelector("#summary").replaceChildren(...summarize(config).map(item => Object.assign(document.createElement("li"), { textContent: item })));
+  const query = selectionToSearch(config);
+  const nextURL = `${location.pathname}?${query}${location.hash}`;
+  if (`${location.pathname}${location.search}${location.hash}` !== nextURL) history.replaceState(null, "", nextURL);
 }
 
 if (typeof document !== "undefined") {
+  const releases = [...document.querySelector("#release").options].map(option => option.value);
+  const initial = selectionFromURL(location.search, releases);
+  for (const [key, [id, type]] of Object.entries(selectionFields)) {
+    const input = document.querySelector(`#${id}`);
+    if (type === "checkbox") input.checked = initial[key];
+    else if (key === "tcpPorts") input.value = initial.tcpPortsText;
+    else input.value = String(initial[key]);
+  }
   document.querySelector("#config").addEventListener("input", render);
   document.querySelector("#config").addEventListener("change", render);
   document.querySelector("#copy").addEventListener("click", async event => {

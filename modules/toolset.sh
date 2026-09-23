@@ -5,9 +5,22 @@ module_toolset_description="Mistborn host-management commands"
 module_toolset_apply() {
   ui_step "$module_toolset_description"
   if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
-    ui_info "Would install /usr/local/bin/mistborn"
+    ui_info "Would install /usr/local/bin/mistborn and its Ratatui runner"
   else
-    printf '%s' "$MISTBORN_TOOL_B64" | base64 -d >/usr/local/bin/mistborn
+    install -d -m 0755 /usr/local/lib/mistborn
+    printf '%s' "$MISTBORN_TOOL_B64" | base64 -d >/usr/local/lib/mistborn/host.sh
+    chmod 0644 /usr/local/lib/mistborn/host.sh
+    if [[ -n "${MISTBORN_RUNNER_BINARY:-}" && -x "$MISTBORN_RUNNER_BINARY" && "$MISTBORN_RUNNER_BINARY" != /usr/local/bin/mistborn-bootstrap ]]; then
+      install -m 0755 "$MISTBORN_RUNNER_BINARY" /usr/local/bin/mistborn-bootstrap
+    fi
+    cat >/usr/local/bin/mistborn <<'MISTBORN_LAUNCHER'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ -x /usr/local/bin/mistborn-bootstrap ]]; then
+  exec /usr/local/bin/mistborn-bootstrap host --script /usr/local/lib/mistborn/host.sh "$@"
+fi
+exec bash /usr/local/lib/mistborn/host.sh "$@"
+MISTBORN_LAUNCHER
     chmod 0755 /usr/local/bin/mistborn
   fi
   ui_success "$module_toolset_description"

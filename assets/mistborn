@@ -30,6 +30,55 @@ doctor() {
   if ufw status 2>/dev/null | grep -q 'Status: active'; then printf '  PASS  UFW active\n'; else printf '  WARN  UFW inactive\n'; fi
   return "$failures"
 }
+status() {
+  doctor || true
+  printf '\nService status\n'
+  local service
+  for service in docker tailscaled fail2ban; do
+    if ! command -v systemctl >/dev/null 2>&1; then
+      printf '  INFO  systemd unavailable; cannot inspect %s\n' "$service"
+      break
+    elif systemctl is-active --quiet "$service"; then
+      printf '  PASS  %s active\n' "$service"
+    else
+      printf '  WARN  %s inactive\n' "$service"
+    fi
+  done
+  if command -v tailscale >/dev/null 2>&1; then
+    printf '\nTailscale\n'
+    tailscale status || true
+  fi
+}
+fix_services() {
+  local service changed=0
+  [[ "$EUID" == 0 ]] || die "run 'mistborn fix' with sudo"
+  command -v systemctl >/dev/null 2>&1 || die "systemd is required to repair services"
+  for service in docker tailscaled; do
+    if ! command -v "$service" >/dev/null 2>&1; then
+      printf '  SKIP  %s is not installed\n' "$service"
+      continue
+    fi
+    if systemctl is-active --quiet "$service" && systemctl is-enabled --quiet "$service"; then
+      printf '  PASS  %s is already enabled and active\n' "$service"
+    else
+      printf '  FIX   enabling and starting %s\n' "$service"
+      systemctl enable --now "$service"
+      changed=1
+    fi
+  done
+  if [[ "$changed" == 0 ]]; then printf 'Core services are already healthy.\n'; fi
+  printf 'UFW and SSH settings are left unchanged; review them with mistborn security-status.\n'
+}
+update_all() {
+  printf 'Updating Runtipi core (with app snapshots)...\n'
+  snapshot_apps < <(app_refs)
+  run_runtipi update latest
+  printf '\nUpdating app stores...\n'
+  run_runtipi appstore update
+  printf '\nUpdating apps (with snapshots)...\n'
+  update_apps
+  printf '\nMistborn updates complete.\n'
+}
 update_apps() {
   local backup=1 refs=() ref
   [[ "${1:-}" == --no-backup ]] && { backup=0; shift; }
@@ -39,23 +88,29 @@ update_apps() {
 usage() {
   cat <<'EOF'
 Usage: mistborn COMMAND [ARGS]
+  status                       show installation, service and Tailscale status
   doctor                       audit Docker, Runtipi, Tailscale, rclone and security
+  fix                          enable and start installed Docker/Tailscale services
   security-status              show SSH, UFW, fail2ban and Tailscale status
   tailscale-status             show Tailscale status
   rclone-config                open rclone's configuration UI
   update-apps [--no-backup] [APP:STORE ...]
   update-core [--no-backup] [VERSION]
   update-appstores
+  update                       update Runtipi core, app stores and apps (with backups)
 EOF
 }
 case "${1:-}" in
+  status) status ;;
   doctor) doctor ;;
+  fix) fix_services ;;
   security-status) sshd -T 2>/dev/null | grep -E 'passwordauthentication|permitrootlogin|^port'; ufw status verbose; fail2ban-client status sshd || true; tailscale status || true ;;
   tailscale-status) tailscale status ;;
   rclone-config) rclone config ;;
   update-apps) shift; update_apps "$@" ;;
   update-core) shift; backup=1; [[ "${1:-}" == --no-backup ]] && { backup=0; shift; }; [[ "$backup" == 1 ]] && snapshot_apps < <(app_refs); run_runtipi update "${1:-latest}" ;;
   update-appstores) run_runtipi appstore update ;;
+  update) update_all ;;
   -h|--help|'') usage ;;
   *) die "unknown command: $1" ;;
 esac

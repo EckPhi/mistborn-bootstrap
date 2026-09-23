@@ -12,7 +12,7 @@ Security hardening is included but deliberately opt-in.
 Review the script, then run the pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh | sudo bash -s -- server
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.1/install.sh | sudo bash -s -- server
 ```
 
 The launcher downloads the CI-built binary for x86-64 or ARM64, verifies its
@@ -21,14 +21,14 @@ For unattended Tailscale
 enrollment, provide a [pre-authentication key](https://tailscale.com/kb/1085/auth-keys):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh \
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.1/install.sh \
   | sudo env TAILSCALE_AUTH_KEY='tskey-auth-...' bash -s -- server
 ```
 
 Pass the collection first, followed by `--dry-run`, `--yes`, or `--user NAME`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh | sudo bash -s -- server --dry-run --user phil
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.1/install.sh | sudo bash -s -- server --dry-run --user phil
 ```
 
 ## Development
@@ -69,6 +69,9 @@ features formerly owned by the standalone Runtipi Companion CLI:
 
 ```bash
 sudo mistborn doctor
+sudo mistborn status
+sudo mistborn fix
+sudo mistborn update
 sudo mistborn security-status
 sudo mistborn tailscale-status
 sudo mistborn rclone-config
@@ -80,9 +83,15 @@ sudo mistborn update-appstores
 App and core updates create native Runtipi app snapshots first. Pass
 `--no-backup` immediately after the update command to opt out.
 
+`mistborn status` summarizes installed tools, services, and Tailscale
+connectivity. `sudo mistborn fix` enables and starts installed Docker and
+Tailscale services; it leaves firewall and SSH configuration untouched.
+`sudo mistborn update` updates the Runtipi core, app stores, and apps, creating
+app snapshots before core and app updates.
+
 Enable hardening only after confirming key-based SSH access:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.0/install.sh \
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.1/install.sh \
   | sudo env MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=22 bash -s -- server
 ```

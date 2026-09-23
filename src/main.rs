@@ -49,7 +49,14 @@ impl EventLog {
 }
 
 fn usage() -> &'static str {
-    "Usage: mistborn-bootstrap run COLLECTION [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]"
+    "Usage: mistborn-bootstrap run COLLECTION [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]"
+}
+
+fn interactive_terminal() -> bool {
+    io::stdin().is_terminal()
+        && io::stdout().is_terminal()
+        && env::var("TERM").is_ok_and(|term| term != "dumb")
+        && env::var_os("NO_COLOR").is_none()
 }
 
 fn value(args: &[String], index: &mut usize, flag: &str) -> Result<String, String> {
@@ -193,10 +200,7 @@ fn execute(options: Options) -> Result<(), String> {
         })
         .collect();
     let already_completed = completed_flags.iter().filter(|done| **done).count();
-    let use_dashboard = io::stdin().is_terminal()
-        && io::stdout().is_terminal()
-        && env::var("TERM").is_ok_and(|term| term != "dumb")
-        && env::var_os("NO_COLOR").is_none();
+    let use_dashboard = interactive_terminal();
     let mut dashboard = if use_dashboard {
         Some(Dashboard::new(
             &options.collection,
@@ -271,6 +275,10 @@ fn execute(options: Options) -> Result<(), String> {
                 .args(&options.forwarded)
                 .arg("--only")
                 .arg(&module)
+                .env(
+                    "MISTBORN_RUNNER_BINARY",
+                    env::current_exe().map_err(|error| error.to_string())?,
+                )
                 .status()
                 .map_err(|error| format!("failed to start {module}: {error}"))?;
             (status.success(), status.code())
@@ -312,8 +320,70 @@ fn execute(options: Options) -> Result<(), String> {
     Ok(())
 }
 
+fn execute_host(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() < 3 || arguments[1] != "--script" {
+        return Err(format!(
+            "Usage: mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]\n{}",
+            usage()
+        ));
+    }
+    let script = PathBuf::from(&arguments[2]);
+    if !script.is_file() {
+        return Err(format!(
+            "host command script not found: {}",
+            script.display()
+        ));
+    }
+    let command_arguments = &arguments[3..];
+    let operation = command_arguments
+        .first()
+        .map_or("help", |argument| argument.as_str());
+    if interactive_terminal() {
+        let steps = vec![operation.to_owned()];
+        let mut dashboard = Dashboard::new("host", &steps, &[false])?;
+        let (succeeded, code) =
+            dashboard.run_host_command(&script, command_arguments, operation)?;
+        let output = dashboard.screen_contents();
+        drop(dashboard);
+        let output = output.trim_end();
+        if !output.is_empty() {
+            println!("{output}");
+        }
+        if succeeded {
+            Ok(())
+        } else {
+            Err(format!(
+                "mistborn {operation} failed with exit code {}",
+                code.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
+            ))
+        }
+    } else {
+        let status = Command::new("bash")
+            .arg(&script)
+            .args(command_arguments)
+            .status()
+            .map_err(|error| format!("failed to start mistborn {operation}: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "mistborn {operation} failed with exit code {}",
+                status
+                    .code()
+                    .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
+            ))
+        }
+    }
+}
+
 fn main() -> ExitCode {
-    match parse_args().and_then(execute) {
+    let arguments: Vec<String> = env::args().collect();
+    let result = if arguments.get(1).is_some_and(|argument| argument == "host") {
+        execute_host(&arguments[1..])
+    } else {
+        parse_args().and_then(execute)
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("mistborn-bootstrap: {error}");

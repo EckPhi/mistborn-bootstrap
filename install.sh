@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly MISTBORN_DEFAULT_VERSION="v0.5.0"
+readonly MISTBORN_DEFAULT_VERSION="v0.5.1"
 readonly MISTBORN_REPOSITORY="EckPhi/mistborn-bootstrap"
 
 fail() {
