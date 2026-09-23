@@ -151,6 +151,5 @@ case "${1:-}" in
   update-appstores) run_runtipi appstore update ;;
   upgrade|update) update_bootstrap ;;
   update-runtipi) update_runtipi ;;
-  -h|--help|'') usage ;;
   *) die "unknown command: $1" ;;
 esac
