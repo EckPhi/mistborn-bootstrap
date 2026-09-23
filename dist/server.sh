@@ -3,6 +3,8 @@ set -Eeuo pipefail
 trap 'ui_error "Setup failed on line $LINENO"' ERR
 MISTBORN_DRY_RUN=0
 MISTBORN_YES=0
+MISTBORN_ONLY=""
+MISTBORN_MODULES=( common docker zsh tailscale runtipi rclone security toolset )
 export MISTBORN_TOOL_B64='IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLUVldW8gcGlwZWZhaWwKClJVTlRJUElfUEFUSD0iJHtSVU5USVBJX1BBVEg6LS9vcHQvcnVudGlwaX0iCgpkaWUoKSB7IHByaW50ZiAnZXJyb3I6ICVzXG4nICIkKiIgPiYyOyBleGl0IDE7IH0KcnVudGlwaV9jbGkoKSB7CiAgaWYgW1sgLXggIiRSVU5USVBJX1BBVEgvcnVudGlwaS1jbGkiIF1dOyB0aGVuIHByaW50ZiAnJXNcbicgIiRSVU5USVBJX1BBVEgvcnVudGlwaS1jbGkiCiAgZWxpZiBjb21tYW5kIC12IHJ1bnRpcGktY2xpID4vZGV2L251bGw7IHRoZW4gY29tbWFuZCAtdiBydW50aXBpLWNsaQogIGVsc2UgZGllICJydW50aXBpLWNsaSBub3QgZm91bmQgdW5kZXIgJFJVTlRJUElfUEFUSCBvciBQQVRIIjsgZmkKfQpydW5fcnVudGlwaSgpIHsgIiQocnVudGlwaV9jbGkpIiAiJEAiOyB9CmFwcF9yZWZzKCkgewogIGxvY2FsIHN0b3JlIGFwcAogIGZvciBzdG9yZSBpbiAiJFJVTlRJUElfUEFUSCIvYXBwcy8qOyBkbwogICAgW1sgLWQgIiRzdG9yZSIgXV0gfHwgY29udGludWUKICAgIGZvciBhcHAgaW4gIiRzdG9yZSIvKjsgZG8gW1sgLWQgIiRhcHAiIF1dICYmIHByaW50ZiAnJXM6JXNcbicgIiQoYmFzZW5hbWUgIiRhcHAiKSIgIiQoYmFzZW5hbWUgIiRzdG9yZSIpIjsgZG9uZQogIGRvbmUKfQpzbmFwc2hvdF9hcHBzKCkgeyBsb2NhbCByZWY7IHdoaWxlIElGUz0gcmVhZCAtciByZWY7IGRvIHJ1bl9ydW50aXBpIGFwcCBiYWNrdXAgIiRyZWYiOyBkb25lOyB9CmRvY3RvcigpIHsKICBsb2NhbCBmYWlsdXJlcz0wCiAgcHJpbnRmICdNaXN0Ym9ybiBob3N0IGRpYWdub3N0aWNzXG4nCiAgZm9yIGNvbW1hbmQgaW4gZG9ja2VyIHRhaWxzY2FsZSByY2xvbmUgdWZ3IGZhaWwyYmFuLWNsaWVudDsgZG8KICAgIGlmIGNvbW1hbmQgLXYgIiRjb21tYW5kIiA+L2Rldi9udWxsIDI+JjE7IHRoZW4gcHJpbnRmICcgIFBBU1MgICVzIGluc3RhbGxlZFxuJyAiJGNvbW1hbmQiOyBlbHNlIHByaW50ZiAnICBXQVJOICAlcyBtaXNzaW5nXG4nICIkY29tbWFuZCI7IGZpCiAgZG9uZQogIGlmIFtbIC1kICIkUlVOVElQSV9QQVRIIiBdXTsgdGhlbiBwcmludGYgJyAgUEFTUyAgUnVudGlwaSBkaXJlY3Rvcnk6ICVzXG4nICIkUlVOVElQSV9QQVRIIjsgZWxzZSBwcmludGYgJyAgRkFJTCAgUnVudGlwaSBkaXJlY3RvcnkgbWlzc2luZ1xuJzsgZmFpbHVyZXM9MTsgZmkKICBpZiBkb2NrZXIgaW5mbyA+L2Rldi9udWxsIDI+JjE7IHRoZW4gcHJpbnRmICcgIFBBU1MgIERvY2tlciBkYWVtb24gcmVhY2hhYmxlXG4nOyBlbHNlIHByaW50ZiAnICBGQUlMICBEb2NrZXIgZGFlbW9uIHVucmVhY2hhYmxlXG4nOyBmYWlsdXJlcz0xOyBmaQogIGlmIHN5c3RlbWN0bCBpcy1hY3RpdmUgLS1xdWlldCBmYWlsMmJhbjsgdGhlbiBwcmludGYgJyAgUEFTUyAgZmFpbDJiYW4gYWN0aXZlXG4nOyBlbHNlIHByaW50ZiAnICBXQVJOICBmYWlsMmJhbiBpbmFjdGl2ZVxuJzsgZmkKICBpZiB1Zncgc3RhdHVzIDI+L2Rldi9udWxsIHwgZ3JlcCAtcSAnU3RhdHVzOiBhY3RpdmUnOyB0aGVuIHByaW50ZiAnICBQQVNTICBVRlcgYWN0aXZlXG4nOyBlbHNlIHByaW50ZiAnICBXQVJOICBVRlcgaW5hY3RpdmVcbic7IGZpCiAgcmV0dXJuICIkZmFpbHVyZXMiCn0KdXBkYXRlX2FwcHMoKSB7CiAgbG9jYWwgYmFja3VwPTEgcmVmcz0oKSByZWYKICBbWyAiJHsxOi19IiA9PSAtLW5vLWJhY2t1cCBdXSAmJiB7IGJhY2t1cD0wOyBzaGlmdDsgfQogIGlmIFtbICQjIC1ndCAwIF1dOyB0aGVuIHJlZnM9KCIkQCIpOyBlbHNlIG1hcGZpbGUgLXQgcmVmcyA8IDwoYXBwX3JlZnMpOyBmaQogIGZvciByZWYgaW4gIiR7cmVmc1tAXX0iOyBkbyBbWyAiJGJhY2t1cCIgPT0gMSBdXSAmJiBydW5fcnVudGlwaSBhcHAgYmFja3VwICIkcmVmIjsgcnVuX3J1bnRpcGkgYXBwIHVwZGF0ZSAiJHJlZiI7IGRvbmUKfQp1c2FnZSgpIHsKICBjYXQgPDwnRU9GJwpVc2FnZTogbWlzdGJvcm4gQ09NTUFORCBbQVJHU10KICBkb2N0b3IgICAgICAgICAgICAgICAgICAgICAgIGF1ZGl0IERvY2tlciwgUnVudGlwaSwgVGFpbHNjYWxlLCByY2xvbmUgYW5kIHNlY3VyaXR5CiAgc2VjdXJpdHktc3RhdHVzICAgICAgICAgICAgICBzaG93IFNTSCwgVUZXLCBmYWlsMmJhbiBhbmQgVGFpbHNjYWxlIHN0YXR1cwogIHRhaWxzY2FsZS1zdGF0dXMgICAgICAgICAgICAgc2hvdyBUYWlsc2NhbGUgc3RhdHVzCiAgcmNsb25lLWNvbmZpZyAgICAgICAgICAgICAgICBvcGVuIHJjbG9uZSdzIGNvbmZpZ3VyYXRpb24gVUkKICB1cGRhdGUtYXBwcyBbLS1uby1iYWNrdXBdIFtBUFA6U1RPUkUgLi4uXQogIHVwZGF0ZS1jb3JlIFstLW5vLWJhY2t1cF0gW1ZFUlNJT05dCiAgdXBkYXRlLWFwcHN0b3JlcwpFT0YKfQpjYXNlICIkezE6LX0iIGluCiAgZG9jdG9yKSBkb2N0b3IgOzsKICBzZWN1cml0eS1zdGF0dXMpIHNzaGQgLVQgMj4vZGV2L251bGwgfCBncmVwIC1FICdwYXNzd29yZGF1dGhlbnRpY2F0aW9ufHBlcm1pdHJvb3Rsb2dpbnxecG9ydCc7IHVmdyBzdGF0dXMgdmVyYm9zZTsgZmFpbDJiYW4tY2xpZW50IHN0YXR1cyBzc2hkIHx8IHRydWU7IHRhaWxzY2FsZSBzdGF0dXMgfHwgdHJ1ZSA7OwogIHRhaWxzY2FsZS1zdGF0dXMpIHRhaWxzY2FsZSBzdGF0dXMgOzsKICByY2xvbmUtY29uZmlnKSByY2xvbmUgY29uZmlnIDs7CiAgdXBkYXRlLWFwcHMpIHNoaWZ0OyB1cGRhdGVfYXBwcyAiJEAiIDs7CiAgdXBkYXRlLWNvcmUpIHNoaWZ0OyBiYWNrdXA9MTsgW1sgIiR7MTotfSIgPT0gLS1uby1iYWNrdXAgXV0gJiYgeyBiYWNrdXA9MDsgc2hpZnQ7IH07IFtbICIkYmFja3VwIiA9PSAxIF1dICYmIHNuYXBzaG90X2FwcHMgPCA8KGFwcF9yZWZzKTsgcnVuX3J1bnRpcGkgdXBkYXRlICIkezE6LWxhdGVzdH0iIDs7CiAgdXBkYXRlLWFwcHN0b3JlcykgcnVuX3J1bnRpcGkgYXBwc3RvcmUgdXBkYXRlIDs7CiAgLWh8LS1oZWxwfCcnKSB1c2FnZSA7OwogICopIGRpZSAidW5rbm93biBjb21tYW5kOiAkMSIgOzsKZXNhYwo='
 # shellcheck shell=bash
 
@@ -278,20 +280,28 @@ main() {
       --dry-run) MISTBORN_DRY_RUN=1 ;;
       --yes) MISTBORN_YES=1 ;;
       --user) shift; MISTBORN_USER="${1:?--user requires a value}" ;;
-      -h|--help) printf 'Usage: %s [--dry-run] [--yes] [--user NAME]\n' "$0"; return ;;
+      --only) shift; MISTBORN_ONLY="${1:?--only requires a module name}" ;;
+      -h|--help) printf 'Usage: %s [--dry-run] [--yes] [--user NAME] [--only MODULE]\n' "$0"; return ;;
       *) ui_error "Unknown argument: $1"; return 2 ;;
     esac
     shift
   done
+  if [[ -n "$MISTBORN_ONLY" ]]; then
+    local known=0 module
+    for module in "${MISTBORN_MODULES[@]}"; do
+      [[ "$module" == "$MISTBORN_ONLY" ]] && known=1
+    done
+    [[ "$known" == 1 ]] || { ui_error "Unknown module: $MISTBORN_ONLY"; return 2; }
+  fi
   ui_header "Mistborn server setup"
-  module_common_apply
-  module_docker_apply
-  module_zsh_apply
-  module_tailscale_apply
-  module_runtipi_apply
-  module_rclone_apply
-  module_security_apply
-  module_toolset_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != common ]] || module_common_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != docker ]] || module_docker_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != zsh ]] || module_zsh_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != tailscale ]] || module_tailscale_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != runtipi ]] || module_runtipi_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != rclone ]] || module_rclone_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != security ]] || module_security_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != toolset ]] || module_toolset_apply
   ui_header "Setup complete"
 }
 main "$@"

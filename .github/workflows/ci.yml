@@ -13,6 +13,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Build collections
         run: ./tools/build.sh
+      - name: Test resumable runner
+        run: cargo test --locked
       - name: Check generated scripts
         run: |
           git diff --exit-code -- dist/
