@@ -122,8 +122,10 @@ server setup screen, press `h` or Home to return to the command picker.
 App and core updates create native Runtipi app snapshots first. Pass
 `--no-backup` immediately after the update command to opt out.
 
-`mistborn status` summarizes installed tools, services, and Tailscale
-connectivity. `sudo mistborn fix` enables and starts installed Docker and
+`mistborn status` reports installed component versions, service health,
+bootstrap state, and effective SSH, UFW, fail2ban, Plex, and Tailscale
+configuration. It verifies required managed firewall rules but permits
+unrelated administrator rules. `sudo mistborn fix` enables and starts installed Docker and
 Tailscale services; it leaves firewall and SSH configuration untouched.
 `sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
 the latest stable bootstrap release. Existing completed setup stages remain

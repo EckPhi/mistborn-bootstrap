@@ -2,6 +2,9 @@
 set -Eeuo pipefail
 
 RUNTIPI_PATH="${RUNTIPI_PATH:-/opt/runtipi}"
+MISTBORN_STATE_DIR="${MISTBORN_STATE_DIR:-/var/lib/mistborn-bootstrap}"
+MISTBORN_RUNNER_PATH="${MISTBORN_RUNNER_PATH:-/usr/local/bin/mistborn-bootstrap}"
+MISTBORN_PLEX_UFW_PROFILE="${MISTBORN_PLEX_UFW_PROFILE:-/etc/ufw/applications.d/plexmediaserver}"
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 task_event() {
@@ -22,6 +25,193 @@ app_refs() {
   done
 }
 snapshot_apps() { local ref; while IFS= read -r ref; do run_runtipi app backup "$ref"; done; }
+
+report_command_version() {
+  local command="$1" version
+  if ! command -v "$command" >/dev/null 2>&1; then
+    printf '  WARN  %s not installed\n' "$command"
+    return 0
+  fi
+  version="$($command --version 2>&1 | head -n1 || true)"
+  [[ -n "$version" ]] || version="installed (version unavailable)"
+  printf '  PASS  %s: %s\n' "$command" "$version"
+}
+
+bootstrap_state_status() {
+  local state_file="$MISTBORN_STATE_DIR/server.json"
+  printf '\nBootstrap state\n'
+  if [[ ! -r "$state_file" ]]; then
+    printf '  WARN  no readable server state at %s\n' "$state_file"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '  WARN  python3 unavailable; cannot inspect %s\n' "$state_file"
+    return 0
+  fi
+  python3 - "$state_file" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as handle:
+        state = json.load(handle)
+except (OSError, ValueError) as error:
+    print(f"  FAIL  state unreadable: {error}")
+    raise SystemExit(1)
+
+version = state.get("version", "unknown")
+updated = state.get("updated_at")
+stamp = "unknown"
+if isinstance(updated, (int, float)):
+    stamp = datetime.fromtimestamp(updated, tz=timezone.utc).isoformat()
+print(f"  PASS  schema v{version}; updated {stamp}")
+failed = False
+for name, module in state.get("modules", {}).items():
+    status = module.get("status", "unknown")
+    marker = "PASS" if status == "completed" else "WARN"
+    if status == "failed":
+        marker = "FAIL"
+        failed = True
+    print(f"  {marker:<4}  {name}: {status}")
+raise SystemExit(1 if failed else 0)
+PY
+}
+
+state_task_status() {
+  local module="$1" task="$2" state_file="$MISTBORN_STATE_DIR/server.json"
+  if [[ ! -r "$state_file" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf 'unknown\n'
+    return 0
+  fi
+  python3 - "$state_file" "$module" "$task" <<'PY' 2>/dev/null || printf 'unknown\n'
+import json
+import sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        state = json.load(handle)
+    task = state.get("modules", {}).get(sys.argv[2], {}).get("tasks", {}).get(sys.argv[3], {})
+    print(task if isinstance(task, str) else task.get("status", "unknown"))
+except (OSError, ValueError):
+    print("unknown")
+PY
+}
+
+configuration_status() {
+  local failures=0 ssh_policy ufw_policy tailscale_json tailscale_prefs
+  local ssh_expected firewall_expected plex_expected fail2ban_expected forwarding_expected tailscale_only_expected
+  ssh_expected="$(state_task_status security ssh)"
+  firewall_expected="$(state_task_status security firewall)"
+  plex_expected="$(state_task_status security plex-firewall)"
+  fail2ban_expected="$(state_task_status security fail2ban)"
+  forwarding_expected="$(state_task_status tailscale forwarding)"
+  tailscale_only_expected="$(state_task_status security tailscale-only)"
+  printf '\nEffective configuration\n'
+
+  if command -v sshd >/dev/null 2>&1; then
+    ssh_policy="$(sshd -T 2>/dev/null || true)"
+    if grep -qx 'passwordauthentication no' <<<"$ssh_policy"; then
+      printf '  PASS  SSH password authentication disabled\n'
+    elif [[ "$ssh_expected" == completed ]]; then
+      printf '  FAIL  SSH password authentication drifted from applied hardening\n'
+      failures=1
+    else
+      printf '  WARN  SSH password authentication is not disabled\n'
+    fi
+    if grep -qx 'permitrootlogin no' <<<"$ssh_policy"; then
+      printf '  PASS  SSH root login disabled\n'
+    elif [[ "$ssh_expected" == completed ]]; then
+      printf '  FAIL  SSH root-login policy drifted from applied hardening\n'
+      failures=1
+    else
+      printf '  WARN  SSH root login is not fully disabled\n'
+    fi
+    printf '  INFO  SSH %s\n' "$(grep -m1 '^port ' <<<"$ssh_policy" || printf 'port unknown')"
+  else
+    printf '  WARN  sshd unavailable; SSH policy not checked\n'
+  fi
+
+  if command -v ufw >/dev/null 2>&1; then
+    ufw_policy="$(ufw status verbose 2>/dev/null || true)"
+    if grep -q '^Status: active' <<<"$ufw_policy"; then
+      printf '  PASS  UFW active\n'
+    elif [[ "$firewall_expected" == completed ]]; then
+      printf '  FAIL  UFW inactive after firewall task was applied\n'
+      failures=1
+    else
+      printf '  WARN  UFW inactive\n'
+    fi
+    if grep -Eq '^Default: deny \(incoming\)' <<<"$ufw_policy"; then
+      printf '  PASS  UFW default incoming policy is deny\n'
+    elif [[ "$firewall_expected" == completed ]]; then
+      printf '  FAIL  UFW incoming policy drifted from applied hardening\n'
+      failures=1
+    else
+      printf '  WARN  UFW default incoming policy is not deny\n'
+    fi
+    if [[ "$plex_expected" == completed && ! -f "$MISTBORN_PLEX_UFW_PROFILE" ]]; then
+      printf '  FAIL  applied Plex UFW profile is missing\n'
+      failures=1
+    elif [[ -f "$MISTBORN_PLEX_UFW_PROFILE" ]]; then
+      if grep -Eq '^32400/tcp[[:space:]]+ALLOW' <<<"$ufw_policy"; then
+        printf '  PASS  Plex remote-access rule present\n'
+      else
+        printf '  FAIL  Plex profile installed but TCP 32400 allow rule missing\n'
+        failures=1
+      fi
+      if grep -Eq 'plexmediaserver-all.*tailscale0|tailscale0.*plexmediaserver-all' <<<"$ufw_policy"; then
+        printf '  PASS  Plex local services allowed through tailscale0\n'
+      else
+        printf '  INFO  no Plex local-services rule on tailscale0\n'
+      fi
+    fi
+  else
+    printf '  WARN  UFW unavailable; firewall policy not checked\n'
+  fi
+
+  if command -v fail2ban-client >/dev/null 2>&1; then
+    if fail2ban-client status sshd >/dev/null 2>&1; then
+      printf '  PASS  fail2ban sshd jail active\n'
+    elif [[ "$fail2ban_expected" == completed ]]; then
+      printf '  FAIL  fail2ban sshd jail inactive after task was applied\n'
+      failures=1
+    else
+      printf '  WARN  fail2ban sshd jail unavailable\n'
+    fi
+  fi
+
+  if command -v tailscale >/dev/null 2>&1; then
+    tailscale_json="$(tailscale status --json 2>/dev/null || true)"
+    if grep -Eq '"BackendState"[[:space:]]*:[[:space:]]*"Running"' <<<"$tailscale_json"; then
+      printf '  PASS  Tailscale backend running\n'
+    else
+      printf '  FAIL  Tailscale backend not running\n'
+      failures=1
+    fi
+    tailscale_prefs="$(tailscale debug prefs 2>/dev/null || true)"
+    if grep -Eq '"RunSSH"[[:space:]]*:[[:space:]]*true' <<<"$tailscale_prefs"; then
+      printf '  INFO  Tailscale SSH enabled\n'
+    elif [[ "$tailscale_only_expected" == completed ]]; then
+      printf '  FAIL  Tailscale SSH disabled after Tailscale-only task was applied\n'
+      failures=1
+    else
+      printf '  INFO  Tailscale SSH disabled or unavailable\n'
+    fi
+    if grep -Eq '"AdvertiseRoutes"[[:space:]]*:[[:space:]]*\[[^]]' <<<"$tailscale_prefs"; then
+      printf '  INFO  Tailscale routes are advertised\n'
+    elif [[ "$forwarding_expected" == completed ]]; then
+      printf '  FAIL  no routes advertised after exit-node forwarding task was applied\n'
+      failures=1
+    else
+      printf '  INFO  no Tailscale routes advertised\n'
+    fi
+  else
+    printf '  WARN  Tailscale unavailable; configuration not checked\n'
+  fi
+  return "$failures"
+}
+
 doctor() {
   local failures=0
   printf 'Mistborn host diagnostics\n'
@@ -35,9 +225,24 @@ doctor() {
   return "$failures"
 }
 status() {
-  doctor || true
-  printf '\nService status\n'
-  local service
+  local failures=0 service version="${MISTBORN_BOOTSTRAP_VERSION:-unknown}"
+  printf 'Mistborn installation\n'
+  printf '  INFO  bootstrap version: %s\n' "$version"
+  for service in docker tailscale rclone ufw fail2ban-client; do report_command_version "$service"; done
+  if [[ -x "$MISTBORN_RUNNER_PATH" ]]; then
+    printf '  PASS  runner installed: %s\n' "$MISTBORN_RUNNER_PATH"
+  else
+    printf '  FAIL  runner missing: %s\n' "$MISTBORN_RUNNER_PATH"
+    failures=1
+  fi
+  if [[ -d "$RUNTIPI_PATH" ]]; then
+    printf '  PASS  Runtipi directory: %s\n' "$RUNTIPI_PATH"
+  else
+    printf '  FAIL  Runtipi directory missing: %s\n' "$RUNTIPI_PATH"
+    failures=1
+  fi
+
+  printf '\nServices\n'
   for service in docker tailscaled fail2ban; do
     if ! command -v systemctl >/dev/null 2>&1; then
       printf '  INFO  systemd unavailable; cannot inspect %s\n' "$service"
@@ -48,10 +253,9 @@ status() {
       printf '  WARN  %s inactive\n' "$service"
     fi
   done
-  if command -v tailscale >/dev/null 2>&1; then
-    printf '\nTailscale\n'
-    tailscale status || true
-  fi
+  bootstrap_state_status || failures=1
+  configuration_status || failures=1
+  return "$failures"
 }
 fix_services() {
   local service changed=0
@@ -124,7 +328,7 @@ update_apps() {
 usage() {
   cat <<'EOF'
 Usage: mistborn COMMAND [ARGS]
-  status                       show installation, service and Tailscale status
+  status                       verify installation, versions, state and configuration
   doctor                       audit Docker, Runtipi, Tailscale, rclone and security
   fix                          enable and start installed Docker/Tailscale services
   security-status              show SSH, UFW, fail2ban and Tailscale status

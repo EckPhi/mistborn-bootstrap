@@ -21,6 +21,8 @@ jobs:
         run: bash tests/versioning.sh
       - name: Test generated module options
         run: bash tests/generated.sh
+      - name: Test host status verification
+        run: bash tests/status.sh
       - name: Check generated scripts
         run: |
           git diff --exit-code -- dist/

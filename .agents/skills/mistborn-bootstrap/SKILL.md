@@ -15,9 +15,11 @@ assembling host commands independently.
 - Before changing an existing host, run `mistborn-bootstrap plan COLLECTION`.
 - Apply one migration with `mistborn-bootstrap apply COLLECTION STAGE/TASK`.
   Use a stage target only when every task in that stage should rerun.
-- Use `mistborn doctor`, `mistborn status`, and `mistborn security-status` for
-  diagnostics. Do not treat `doctor` as proof that configuration has not
-  drifted unless its checks explicitly cover the relevant setting.
+- Use `mistborn status` for installation versions, recorded state, services,
+  and effective configuration. It verifies required managed firewall rules
+  without rejecting unrelated administrator rules. Use `mistborn doctor` for
+  the shorter dependency/health audit and `mistborn security-status` for raw
+  SSH, UFW, fail2ban, and Tailscale output.
 - Use `mistborn upgrade` for the installed host tool and
   `mistborn update-runtipi` for Runtipi core, stores, and apps.
 
