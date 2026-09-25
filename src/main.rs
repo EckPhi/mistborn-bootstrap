@@ -1155,6 +1155,182 @@ fn execute_reconciliation_command(
 }
 
 struct SystemReconcileAdapter;
+
+fn apply_security_remediation(
+    remediation: mistborn_bootstrap::domain::RemediationId,
+) -> Result<(), String> {
+    use mistborn_bootstrap::domain::RemediationId;
+    let desired =
+        mistborn_bootstrap::config::DesiredState::load(Path::new("/etc/mistborn/config.toml"))
+            .map_err(|error| format!("cannot load desired configuration: {error}"))?;
+    match remediation {
+        RemediationId::SecurityUfw => apply_ufw_policy(&desired),
+        RemediationId::SecurityPlexFirewall => apply_plex_firewall(&desired),
+        other => Err(format!(
+            "no host adapter is registered for {} yet",
+            other.as_str()
+        )),
+    }
+}
+
+fn run_ufw(args: &[&str]) -> Result<(), String> {
+    let status = Command::new("ufw")
+        .args(args)
+        .status()
+        .map_err(|error| format!("cannot start ufw: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "ufw {} exited with {}",
+            args.join(" "),
+            status.code().unwrap_or(128)
+        ))
+    }
+}
+
+fn apply_ufw_policy(desired: &mistborn_bootstrap::config::DesiredState) -> Result<(), String> {
+    use mistborn_bootstrap::config::IncomingPolicy;
+    let firewall = desired
+        .firewall
+        .as_ref()
+        .ok_or("firewall policy is unmanaged")?;
+    if firewall.enabled && desired.ssh.is_none() {
+        return Err(
+            "refusing to enable default-deny UFW without a managed SSH port; configure [ssh] first"
+                .into(),
+        );
+    }
+    // Preserve remote administration before changing the default incoming policy.
+    if firewall.enabled {
+        let ssh_port = desired
+            .ssh
+            .as_ref()
+            .expect("checked above")
+            .port
+            .get()
+            .to_string();
+        run_ufw(&[
+            "allow",
+            &format!("{ssh_port}/tcp"),
+            "comment",
+            "mistborn:security/ufw:ssh",
+        ])?;
+        for port in &firewall.public_tcp_ports {
+            let port = format!("{}/tcp", port.get());
+            run_ufw(&["allow", &port, "comment", "mistborn:security/ufw:public"])?;
+        }
+    }
+    let policy = match firewall.default_incoming {
+        IncomingPolicy::Allow => "allow",
+        IncomingPolicy::Deny => "deny",
+        IncomingPolicy::Reject => "reject",
+    };
+    run_ufw(&["default", policy, "incoming"])?;
+    if firewall.enabled {
+        run_ufw(&["--force", "enable"])
+    } else {
+        run_ufw(&["--force", "disable"])
+    }
+}
+
+fn install_owned_plex_profile(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        let existing = fs::read_to_string(path)
+            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        if !existing.starts_with(host_diagnostics::PLEX_UFW_PROFILE_MARKER) {
+            if host_diagnostics::plex_profile_is_expected(&existing) {
+                return Ok(());
+            }
+            return Err(format!(
+                "{} exists but is not marked as Mistborn-owned; refusing to replace it",
+                path.display()
+            ));
+        }
+    }
+    let parent = path
+        .parent()
+        .ok_or("Plex profile has no parent directory")?;
+    let file_name = path
+        .file_name()
+        .ok_or("Plex profile has no filename")?
+        .to_string_lossy();
+    let temporary = parent.join(format!(".{file_name}.mistborn-{}.tmp", std::process::id()));
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o644)
+        .open(&temporary)
+        .map_err(|error| format!("cannot create {}: {error}", temporary.display()))?;
+    let result = (|| {
+        file.write_all(host_diagnostics::PLEX_UFW_PROFILE.as_bytes())
+            .map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+        fs::rename(&temporary, path).map_err(|error| error.to_string())?;
+        File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| error.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result.map_err(|error| format!("cannot publish owned Plex profile: {error}"))
+}
+
+fn apply_plex_firewall(desired: &mistborn_bootstrap::config::DesiredState) -> Result<(), String> {
+    let firewall = desired
+        .firewall
+        .as_ref()
+        .ok_or("firewall policy is unmanaged")?;
+    let plex = firewall
+        .plex
+        .as_ref()
+        .ok_or("Plex firewall policy is unmanaged")?;
+    if plex.enabled {
+        install_owned_plex_profile(Path::new("/etc/ufw/applications.d/plexmediaserver"))?;
+        run_ufw(&["app", "update", "plexmediaserver"])?;
+        if plex.public_remote_access {
+            run_ufw(&[
+                "allow",
+                "32400/tcp",
+                "comment",
+                "mistborn:security/plex-firewall:public",
+            ])?;
+        }
+        if let Some(cidr) = &plex.lan_cidr {
+            run_ufw(&[
+                "allow",
+                "from",
+                cidr.as_str(),
+                "to",
+                "any",
+                "app",
+                "plexmediaserver-all",
+                "comment",
+                "mistborn:security/plex-firewall:lan",
+            ])?;
+        }
+        if plex.tailscale {
+            run_ufw(&[
+                "allow",
+                "in",
+                "on",
+                "tailscale0",
+                "to",
+                "any",
+                "app",
+                "plexmediaserver-all",
+                "comment",
+                "mistborn:security/plex-firewall:tailscale",
+            ])?;
+        }
+        Ok(())
+    } else {
+        Err("Plex policy is disabled but this adapter never deletes firewall rules or profiles; remove Mistborn-owned Plex access rules explicitly after reviewing the plan".into())
+    }
+}
+
 impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAdapter {
     fn inspect(
         &mut self,
@@ -1180,10 +1356,10 @@ impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAda
                 ("systemctl", vec!["try-restart", service_name(*service)])
             }
             ActionKind::ApplyBoundedRemediation { remediation } => {
-                return Err(format!(
-                    "no host adapter is registered for {} yet",
-                    remediation.as_str()
-                ));
+                if !is_root() {
+                    return Err("reconciliation actions require root".to_owned());
+                }
+                return apply_security_remediation(*remediation);
             }
         };
         if !is_root() {
@@ -1217,6 +1393,8 @@ impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAda
             RemediationId::PackagesUfw => ("package.ufw", "installed"),
             RemediationId::PackagesFail2banClient => ("package.fail2ban-client", "installed"),
             RemediationId::SecurityFail2ban => ("service.fail2ban", "active"),
+            RemediationId::SecurityUfw => ("firewall.policy", "compliant"),
+            RemediationId::SecurityPlexFirewall => ("plex.policy", "compliant"),
             _ => return Err(format!("no verifier is registered for {}", id.as_str())),
         };
         let satisfied = verify_observed_fact(&report.observed, fact, predicate)?;
@@ -1354,6 +1532,60 @@ mod tests {
         ));
         fs::create_dir(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn plex_profile_refuses_to_replace_unowned_file_and_publishes_owned_profile_atomically() {
+        let directory = temporary_directory();
+        let path = directory.join("plexmediaserver");
+        fs::write(&path, "# administrator profile\n").unwrap();
+        assert!(
+            install_owned_plex_profile(&path)
+                .unwrap_err()
+                .contains("not marked as Mistborn-owned")
+        );
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "# administrator profile\n"
+        );
+        let unowned_expected_profile = host_diagnostics::PLEX_UFW_PROFILE
+            .strip_prefix(host_diagnostics::PLEX_UFW_PROFILE_MARKER)
+            .unwrap()
+            .trim_start_matches('\n');
+        fs::write(&path, unowned_expected_profile).unwrap();
+        install_owned_plex_profile(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), unowned_expected_profile);
+        fs::write(
+            &path,
+            format!(
+                "{}\nold managed profile\n",
+                host_diagnostics::PLEX_UFW_PROFILE_MARKER
+            ),
+        )
+        .unwrap();
+        install_owned_plex_profile(&path).unwrap();
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.starts_with(host_diagnostics::PLEX_UFW_PROFILE_MARKER));
+        assert!(contents.contains("ports=32400/tcp"));
+        assert!(
+            !directory
+                .join(format!(
+                    ".plexmediaserver.mistborn-{}.tmp",
+                    std::process::id()
+                ))
+                .exists()
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn ufw_enable_refuses_when_ssh_is_unmanaged_before_running_any_command() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n",
+        )
+        .unwrap();
+        let error = apply_ufw_policy(&desired).unwrap_err();
+        assert!(error.contains("without a managed SSH port"));
     }
 
     #[test]

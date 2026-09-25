@@ -28,15 +28,15 @@ const REGISTRY: [Definition; 9] = [
         id: RemediationId::SecurityUfw,
         risk: RiskClass::Access,
         confirmation: ConfirmationPolicy::Explicit,
-        dependency: None,
-        available: false,
+        dependency: Some(RemediationId::PackagesUfw),
+        available: true,
     },
     Definition {
         id: RemediationId::SecurityPlexFirewall,
         risk: RiskClass::Access,
         confirmation: ConfirmationPolicy::Explicit,
         dependency: Some(RemediationId::SecurityUfw),
-        available: false,
+        available: true,
     },
     Definition {
         id: RemediationId::SecurityFail2ban,
@@ -246,6 +246,12 @@ fn action_description(id: RemediationId) -> String {
         RemediationId::PackagesUfw => "install the UFW package".into(),
         RemediationId::PackagesFail2banClient => "install fail2ban".into(),
         RemediationId::SecurityFail2ban => "enable fail2ban service".into(),
+        RemediationId::SecurityUfw => {
+            "apply desired UFW policy and add missing managed rules without deleting rules".into()
+        }
+        RemediationId::SecurityPlexFirewall => {
+            "install the owned Plex UFW profile and add its scoped rules".into()
+        }
         _ => format!("apply bounded remediation {}", id.as_str()),
     }
 }
@@ -623,6 +629,7 @@ mod tests {
         let diagnostics = vec![
             drift("security/plex-firewall", DiagnosticSeverity::Fail),
             drift("security/ufw", DiagnosticSeverity::Fail),
+            drift("packages/ufw", DiagnosticSeverity::Fail),
         ];
         let first = plan(&snapshot, &diagnostics, None).unwrap();
         let second = plan(&snapshot, &diagnostics, None).unwrap();
@@ -633,9 +640,11 @@ mod tests {
                 .iter()
                 .map(|item| item.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["security/ufw", "security/plex-firewall"]
+            vec!["packages/ufw", "security/ufw", "security/plex-firewall"]
         );
-        assert_eq!(first.remediations[1].dependencies, vec!["security/ufw"]);
+        assert_eq!(first.remediations[1].dependencies, vec!["packages/ufw"]);
+        assert_eq!(first.remediations[2].dependencies, vec!["security/ufw"]);
+        assert!(first.remediations.iter().all(|item| item.available));
     }
 
     #[test]
@@ -950,9 +959,9 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_security_remediations_are_marked_and_refused_before_inspection() {
-        let snapshot = serde_json::json!({"ufw": false});
-        let diagnostics = vec![drift("security/ufw", DiagnosticSeverity::Fail)];
+    fn not_yet_migrated_security_remediations_are_marked_and_refused_before_inspection() {
+        let snapshot = serde_json::json!({"ssh": false});
+        let diagnostics = vec![drift("security/ssh", DiagnosticSeverity::Fail)];
         let proposed = plan(&snapshot, &diagnostics, None).unwrap();
         assert!(!proposed.remediations[0].available);
         assert!(proposed.remediations[0].unavailable_reason.is_some());
@@ -967,7 +976,7 @@ mod tests {
             &mut fake,
             &temp_file(),
             &ApplyOptions {
-                confirmed: [RemediationId::SecurityUfw].into(),
+                confirmed: [RemediationId::SecuritySsh].into(),
                 ..ApplyOptions::default()
             },
         )

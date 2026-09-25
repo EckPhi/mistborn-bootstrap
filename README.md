@@ -173,11 +173,15 @@ shows the proposed work and asks for approval before applying it;
 Both forms use the ordinary reconciliation lock, fresh inspection, event
 history, and post-apply verification.
 
-Phase 3 exposes remediation IDs before every domain has an apply adapter. A
-plan labels unsupported remediations as unavailable, and `reconcile` refuses
-them without mutation. In this release, SSH, UFW/Plex firewall, and Tailscale
-reconciliation are unavailable pending their Phase 4 adapters. Read-only
-diagnostics and planning for those areas remain available.
+Phase 4 has added scoped Rust adapters for `security/ufw` and
+`security/plex-firewall`. UFW remediation adds marked rules and applies the
+configured default incoming policy without deleting rules; enabling default-
+deny requires a managed SSH port so access is opened first. The Plex profile is
+atomically written only when absent or already marked Mistborn-owned. Rules or
+profiles that must be removed (for example, disabling Plex access) are not
+deleted automatically and require separate operator cleanup. Both areas
+remain Access risk and require explicit approval. SSH and Tailscale remain
+unavailable pending their Phase 4 adapters.
 
 `sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
 the latest stable bootstrap release. Existing completed setup stages remain

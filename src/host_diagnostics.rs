@@ -14,6 +14,9 @@ use std::process::Command;
 
 pub use mistborn_bootstrap::domain::InspectionStatus;
 
+pub(crate) const PLEX_UFW_PROFILE_MARKER: &str = "# Managed by Mistborn: security/plex-firewall";
+pub(crate) const PLEX_UFW_PROFILE: &str = "# Managed by Mistborn: security/plex-firewall\n[plexmediaserver]\ntitle=Plex Media Server (Standard)\ndescription=The Plex Media Server\nports=32400/tcp|3005/tcp|5353/udp|8324/tcp|32410:32414/udp\n\n[plexmediaserver-dlna]\ntitle=Plex Media Server (DLNA)\ndescription=The Plex Media Server (additional DLNA capability only)\nports=1900/udp|32469/tcp\n\n[plexmediaserver-all]\ntitle=Plex Media Server (Standard + DLNA)\ndescription=The Plex Media Server (with additional DLNA capability)\nports=32400/tcp|3005/tcp|5353/udp|8324/tcp|32410:32414/udp|1900/udp|32469/tcp\n";
+
 pub struct SystemCommands;
 
 impl CommandAdapter for SystemCommands {
@@ -757,12 +760,16 @@ fn inspect_ufw(
             ufw.default_incoming
         ));
     }
-    let missing_ports = firewall
-        .public_tcp_ports
-        .iter()
-        .filter(|port| !ufw_allows_public_tcp(&raw_status, port.get()))
-        .map(|port| port.get())
-        .collect::<Vec<_>>();
+    let missing_ports = if firewall.enabled {
+        firewall
+            .public_tcp_ports
+            .iter()
+            .filter(|port| !ufw_allows_public_tcp(&raw_status, port.get()))
+            .map(|port| port.get())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     if !missing_ports.is_empty() {
         mismatch.push(format!(
             "public TCP ports missing: {}",
@@ -773,6 +780,18 @@ fn inspect_ufw(
                 .join(", ")
         ));
     }
+    if firewall.enabled
+        && firewall.default_incoming != mistborn_bootstrap::config::IncomingPolicy::Allow
+        && let Some(ssh) = desired.and_then(|state| state.ssh.as_ref())
+        && !ufw_allows_public_tcp(&raw_status, ssh.port.get())
+    {
+        mismatch.push(format!(
+            "managed SSH TCP port {} is not allowed publicly before the default-deny policy",
+            ssh.port.get()
+        ));
+    }
+    let stale_owned_rules = stale_ufw_managed_ports(&raw_status, firewall, desired);
+    mismatch.extend(stale_owned_rules.iter().cloned());
     observed.facts.insert("firewall.public_tcp_ports".to_owned(), InspectionStatus::Available(json!({"desired": firewall.public_tcp_ports.iter().map(|port| port.get()).collect::<Vec<_>>(), "missing": missing_ports})));
     let compliant = mismatch.is_empty();
     observed.facts.insert(
@@ -809,7 +828,7 @@ fn inspect_ufw(
                         .collect()
                 })
                 .unwrap_or_default(),
-            if compliant {
+            if compliant || !stale_owned_rules.is_empty() {
                 None
             } else {
                 Some("security/ufw".to_owned())
@@ -820,6 +839,15 @@ fn inspect_ufw(
             diagnostic.confirmation_required = true;
         }
         diagnostics.push(diagnostic);
+    }
+    if !stale_owned_rules.is_empty() {
+        diagnostics.push(diag(
+            "security/ufw/manual-cleanup",
+            DiagnosticSeverity::Fail,
+            "UFW contains stale Mistborn-owned public port rules that are not deleted automatically",
+            stale_owned_rules,
+            None,
+        ));
     }
 
     let Some(plex) = firewall.plex.as_ref() else {
@@ -833,13 +861,11 @@ fn inspect_ufw(
     let profile = if plex.enabled {
         match fs::read_to_string(profile_path) {
             Ok(contents) => {
-                let profile_has_tcp_32400 = contents
-                    .lines()
-                    .any(|line| line.trim().eq_ignore_ascii_case("ports=32400/tcp"));
+                let profile_is_expected = plex_profile_is_expected(&contents);
                 observed.facts.insert(
                     "plex.ufw_profile".to_owned(),
                     InspectionStatus::Available(
-                        json!({"managed": true, "exists": true, "path": profile_path, "profile_has_tcp_32400": profile_has_tcp_32400}),
+                        json!({"managed": true, "exists": true, "path": profile_path, "profile_is_expected": profile_is_expected}),
                     ),
                 );
                 Some(contents)
@@ -880,7 +906,8 @@ fn inspect_ufw(
         );
         None
     };
-    let plex_issues = compare_plex_profile_and_rules(profile.as_deref(), &raw_status, plex);
+    let plex_comparison = compare_plex_profile_and_rules(profile.as_deref(), &raw_status, plex);
+    let plex_issues = plex_comparison.issues;
     let public = ufw_allows_public_tcp(&raw_status, 32400);
     let plex_compliant = plex_issues.is_empty();
     observed.facts.insert(
@@ -921,7 +948,7 @@ fn inspect_ufw(
                         .collect()
                 })
                 .unwrap_or_default(),
-            if plex_compliant {
+            if plex_compliant || plex_comparison.requires_manual_cleanup {
                 None
             } else {
                 Some("security/plex-firewall".to_owned())
@@ -932,6 +959,15 @@ fn inspect_ufw(
             diagnostic.confirmation_required = true;
         }
         diagnostics.push(diagnostic);
+    }
+    if plex_comparison.requires_manual_cleanup {
+        diagnostics.push(diag(
+            "security/plex-firewall/manual-cleanup",
+            DiagnosticSeverity::Fail,
+            "Plex firewall has stale or overbroad allow rules that Mistborn will not delete automatically",
+            plex_issues.clone(),
+            None,
+        ));
     }
     false
 }
@@ -983,45 +1019,214 @@ fn parse_ufw(output: &str) -> Result<UfwState, String> {
 fn ufw_allows_public_tcp(output: &str, port: u16) -> bool {
     let target = format!("{port}/tcp");
     output.lines().any(|line| {
-        line.contains(&target)
+        line.split_whitespace().next() == Some(target.as_str())
             && line.contains("ALLOW IN")
             && line.contains("Anywhere")
             && !line.contains("tailscale0")
     })
 }
 
-fn profile_has_port(profile: &str, port: u16) -> bool {
-    let target = format!("{port}/tcp");
-    profile.lines().any(|line| {
-        line.split_once('=').is_some_and(|(key, value)| {
-            key.trim().eq_ignore_ascii_case("ports")
-                && value.split(',').any(|entry| entry.trim() == target)
+fn ufw_target_overlaps(rule_target: &str, expected_target: &str) -> bool {
+    let Some((rule_ports, rule_protocol)) = rule_target.split_once('/') else {
+        return false;
+    };
+    let Some((expected_ports, expected_protocol)) = expected_target.split_once('/') else {
+        return false;
+    };
+    if !rule_protocol.eq_ignore_ascii_case(expected_protocol) {
+        return false;
+    }
+    let parse_range = |value: &str| -> Option<(u16, u16)> {
+        if let Some((start, end)) = value.split_once(':') {
+            Some((start.parse().ok()?, end.parse().ok()?))
+        } else {
+            let port = value.parse().ok()?;
+            Some((port, port))
+        }
+    };
+    let (rule_start, rule_end) = match parse_range(rule_ports) {
+        Some(range) => range,
+        None => return false,
+    };
+    let (expected_start, expected_end) = match parse_range(expected_ports) {
+        Some(range) => range,
+        None => return false,
+    };
+    rule_start <= expected_end && expected_start <= rule_end
+}
+
+fn stale_ufw_managed_ports(
+    status: &str,
+    firewall: &mistborn_bootstrap::config::FirewallConfig,
+    desired: Option<&mistborn_bootstrap::config::DesiredState>,
+) -> Vec<String> {
+    let mut stale = Vec::new();
+    let desired_ports = firewall
+        .public_tcp_ports
+        .iter()
+        .map(|port| port.get())
+        .collect::<std::collections::BTreeSet<_>>();
+    let ssh_port = desired
+        .and_then(|state| state.ssh.as_ref())
+        .map(|ssh| ssh.port.get());
+    for line in status.lines() {
+        let Some((target, comment)) = line.split_once('#') else {
+            continue;
+        };
+        let rule = target.split_whitespace().next().unwrap_or_default();
+        let Some(port) = rule
+            .strip_suffix("/tcp")
+            .and_then(|port| port.parse::<u16>().ok())
+        else {
+            continue;
+        };
+        let comment = comment.trim();
+        if comment.starts_with("mistborn:security/ufw:public")
+            && (!firewall.enabled || !desired_ports.contains(&port))
+        {
+            stale.push(format!(
+                "stale Mistborn public allow rule remains for TCP {port}"
+            ));
+        } else if comment.starts_with("mistborn:security/ufw:ssh")
+            && (!firewall.enabled || Some(port) != ssh_port)
+        {
+            stale.push(format!(
+                "stale Mistborn SSH allow rule remains for TCP {port}"
+            ));
+        }
+    }
+    stale
+}
+
+fn profile_port_map(profile: &str) -> BTreeMap<String, Vec<String>> {
+    let mut section = String::new();
+    let mut ports = BTreeMap::<String, Vec<String>>::new();
+    for line in profile.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line[1..line.len() - 1].trim().to_ascii_lowercase();
+        } else if let Some((key, value)) = line.split_once('=')
+            && key.trim().eq_ignore_ascii_case("ports")
+            && !section.is_empty()
+        {
+            let mut entries = value
+                .split(['|', ','])
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            entries.sort();
+            ports.insert(section.clone(), entries);
+        }
+    }
+    ports
+}
+
+pub(crate) fn plex_profile_is_expected(profile: &str) -> bool {
+    let observed = profile_port_map(profile);
+    let expected = profile_port_map(PLEX_UFW_PROFILE);
+    let sections = profile
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            (line.starts_with('[') && line.ends_with(']'))
+                .then(|| line[1..line.len() - 1].trim().to_ascii_lowercase())
         })
+        .collect::<Vec<_>>();
+    let expected_sections = [
+        "plexmediaserver",
+        "plexmediaserver-dlna",
+        "plexmediaserver-all",
+    ]
+    .map(str::to_owned);
+    sections.len() == expected_sections.len()
+        && expected_sections
+            .iter()
+            .all(|section| sections.contains(section))
+        && observed == expected
+}
+
+fn ufw_app_rule_is_allowed<'a>(status: &'a str, app: &str) -> Vec<Vec<&'a str>> {
+    status
+        .lines()
+        .filter_map(|line| {
+            let tokens = line.split_whitespace().collect::<Vec<_>>();
+            (tokens
+                .first()
+                .is_some_and(|target| target.eq_ignore_ascii_case(app))
+                && tokens.windows(2).any(|pair| pair == ["ALLOW", "IN"]))
+            .then_some(tokens)
+        })
+        .collect()
+}
+
+fn ufw_app_rule_from(status: &str, app: &str, source: &str) -> bool {
+    ufw_app_rule_is_allowed(status, app)
+        .iter()
+        .any(|tokens| tokens.iter().any(|token| *token == source))
+}
+
+fn ufw_app_rule_on_interface(status: &str, app: &str, interface: &str) -> bool {
+    ufw_app_rule_is_allowed(status, app)
+        .iter()
+        .any(|tokens| tokens.windows(2).any(|pair| pair == ["on", interface]))
+}
+
+fn ufw_app_rule_public(status: &str, app: &str) -> bool {
+    ufw_app_rule_is_allowed(status, app).iter().any(|tokens| {
+        tokens.contains(&"Anywhere") && !tokens.windows(2).any(|pair| pair[0] == "on")
     })
+}
+
+#[derive(Debug, Default)]
+struct PlexComparison {
+    issues: Vec<String>,
+    requires_manual_cleanup: bool,
 }
 
 fn compare_plex_profile_and_rules(
     profile: Option<&str>,
     status: &str,
     plex: &mistborn_bootstrap::config::PlexFirewallConfig,
-) -> Vec<String> {
-    let mut issues = Vec::new();
+) -> PlexComparison {
+    let mut comparison = PlexComparison::default();
+    let issues = &mut comparison.issues;
     if !plex.enabled {
-        if status
+        let direct_rule = status
             .lines()
-            .any(|line| line.contains("32400/tcp") && line.contains("ALLOW IN"))
-        {
-            issues
-                .push("Plex firewall is disabled but TCP 32400 still has an allow rule".to_owned());
+            .any(|line| line.contains("32400/tcp") && line.contains("ALLOW IN"));
+        let app_rule = [
+            "plexmediaserver",
+            "plexmediaserver-dlna",
+            "plexmediaserver-all",
+        ]
+        .iter()
+        .any(|app| !ufw_app_rule_is_allowed(status, app).is_empty());
+        if direct_rule || app_rule {
+            issues.push("Plex firewall is disabled but an allow rule for TCP 32400 or a Plex app profile remains".to_owned());
+            comparison.requires_manual_cleanup = true;
         }
-        return issues;
+        return comparison;
     }
     match profile {
         None => issues.push("Plex UFW profile is missing".to_owned()),
-        Some(contents) if !profile_has_port(contents, 32400) => {
-            issues.push("Plex UFW profile does not declare TCP 32400".to_owned())
+        Some(contents) if !plex_profile_is_expected(contents) => {
+            issues.push("Plex UFW profile port declarations differ from the expected standard, DLNA, or all-services profile".to_owned())
         }
         Some(_) => {}
+    }
+    if let Some(contents) = profile
+        && !contents.starts_with(PLEX_UFW_PROFILE_MARKER)
+        && !plex_profile_is_expected(contents)
+    {
+        issues.push(
+            "unowned Plex UFW profile differs from expected definitions and cannot be replaced automatically"
+                .to_owned(),
+        );
+        comparison.requires_manual_cleanup = true;
     }
     let public = ufw_allows_public_tcp(status, 32400);
     if plex.public_remote_access && !public {
@@ -1030,21 +1235,92 @@ fn compare_plex_profile_and_rules(
     if !plex.public_remote_access && public {
         issues.push("TCP 32400 is publicly allowed although public access is disabled".to_owned());
     }
-    if let Some(cidr) = &plex.lan_cidr
-        && !status.lines().any(|line| {
-            line.contains("32400/tcp") && line.contains(cidr.as_str()) && line.contains("ALLOW IN")
-        })
-    {
-        issues.push(format!("LAN rule for {} is missing", cidr.as_str()));
+    if let Some(cidr) = &plex.lan_cidr {
+        if !ufw_app_rule_from(status, "plexmediaserver-all", cidr.as_str()) {
+            issues.push(format!(
+                "LAN plexmediaserver-all app rule for {} is missing",
+                cidr.as_str()
+            ));
+        }
     }
-    if plex.tailscale
-        && !status.lines().any(|line| {
-            line.contains("32400/tcp") && line.contains("tailscale0") && line.contains("ALLOW IN")
-        })
-    {
-        issues.push("Tailscale interface rule for TCP 32400 is missing".to_owned());
+    let app_names = [
+        "plexmediaserver",
+        "plexmediaserver-dlna",
+        "plexmediaserver-all",
+    ];
+    for app in app_names {
+        for tokens in ufw_app_rule_is_allowed(status, app) {
+            let interface = tokens
+                .windows(2)
+                .find(|pair| pair[0] == "on")
+                .map(|pair| pair[1]);
+            let source = tokens
+                .windows(2)
+                .position(|pair| pair == ["ALLOW", "IN"])
+                .and_then(|index| tokens.get(index + 2))
+                .copied();
+            if let Some(interface) = interface {
+                if interface != "tailscale0" || !plex.tailscale || app != "plexmediaserver-all" {
+                    issues.push(format!(
+                        "unexpected {app} app allow rule on interface {interface}"
+                    ));
+                    comparison.requires_manual_cleanup = true;
+                }
+            } else if let Some(source) = source
+                && source != "Anywhere"
+                && !source.starts_with("Anywhere")
+                && (app != "plexmediaserver-all"
+                    || plex
+                        .lan_cidr
+                        .as_ref()
+                        .is_none_or(|cidr| cidr.as_str() != source))
+            {
+                issues.push(format!("unexpected {app} app allow rule from {source}"));
+                comparison.requires_manual_cleanup = true;
+            }
+        }
     }
-    issues
+    if plex.tailscale && !ufw_app_rule_on_interface(status, "plexmediaserver-all", "tailscale0") {
+        issues.push("Tailscale plexmediaserver-all app rule on tailscale0 is missing".to_owned());
+    }
+    for app in [
+        "plexmediaserver",
+        "plexmediaserver-dlna",
+        "plexmediaserver-all",
+    ] {
+        if ufw_app_rule_public(status, app) {
+            issues.push(format!(
+                "Plex app profile {app} is exposed on all public interfaces; only TCP 32400 may be public"
+            ));
+            comparison.requires_manual_cleanup = true;
+        }
+    }
+    let plex_ports = profile_port_map(PLEX_UFW_PROFILE);
+    for line in status.lines() {
+        let Some(rule_target) = line.split_whitespace().next() else {
+            continue;
+        };
+        if !line.contains("ALLOW IN")
+            || !line.contains("Anywhere")
+            || line.split_whitespace().any(|token| token == "on")
+        {
+            continue;
+        }
+        for expected_target in plex_ports.values().flatten() {
+            if ufw_target_overlaps(rule_target, expected_target)
+                && !(expected_target == "32400/tcp"
+                    && rule_target == "32400/tcp"
+                    && plex.public_remote_access)
+            {
+                issues.push(format!(
+                    "Plex profile port {rule_target} is publicly allowed; only TCP 32400 may be public"
+                ));
+                comparison.requires_manual_cleanup = true;
+                break;
+            }
+        }
+    }
+    comparison
 }
 
 fn inspection_message(status: &InspectionStatus<Value>) -> String {
@@ -1605,12 +1881,12 @@ mod tests {
     #[test]
     fn managed_ufw_compares_enabled_default_and_required_public_ports() {
         let desired = mistborn_bootstrap::config::DesiredState::from_toml(
-            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n",
+            "version=1\nprofile='vps'\n[ssh]\nport=22\npassword_authentication=false\nroot_login=false\n[firewall]\nenabled=true\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n",
         ).unwrap();
         let fixtures = FixtureRunner(HashMap::from([(
             "ufw status verbose".to_owned(),
             output(
-                "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere\n",
+                "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n22/tcp ALLOW IN Anywhere # mistborn:security/ufw:ssh\n80/tcp ALLOW IN Anywhere # mistborn:security/ufw:public\n443/tcp ALLOW IN Anywhere # mistborn:security/ufw:public\n",
                 0,
             ),
         )]));
@@ -1644,6 +1920,95 @@ mod tests {
         assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Fail);
         assert_eq!(diagnostics[0].risk, Some(RiskClass::Access));
         assert!(diagnostics[0].confirmation_required);
+    }
+
+    #[test]
+    fn ufw_public_port_matching_uses_exact_rule_targets() {
+        assert!(!ufw_allows_public_tcp("180/tcp ALLOW IN Anywhere\n", 80));
+        assert!(ufw_allows_public_tcp("80/tcp ALLOW IN Anywhere\n", 80));
+    }
+
+    #[test]
+    fn disabled_ufw_does_not_require_allow_rules_for_convergence() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=false\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n",
+        )
+        .unwrap();
+        let fixtures = FixtureRunner(HashMap::from([(
+            "ufw status verbose".to_owned(),
+            output(
+                "Status: inactive\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n",
+                0,
+            ),
+        )]));
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_ufw(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Pass);
+    }
+
+    #[test]
+    fn managed_ufw_requires_ssh_access_and_surfaces_stale_owned_ports_for_manual_cleanup() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=22\npassword_authentication=false\nroot_login=false\n[firewall]\nenabled=true\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n",
+        )
+        .unwrap();
+        let inspect_fixture = |status: &str| {
+            let runner = FixtureRunner(HashMap::from([(
+                "ufw status verbose".to_owned(),
+                output(status, 0),
+            )]));
+            let mut observed = ObservedState::default();
+            let mut diagnostics = Vec::new();
+            inspect_ufw(
+                &runner,
+                Some(&desired),
+                &mut observed,
+                ReportKind::Doctor,
+                &mut diagnostics,
+            );
+            diagnostics
+        };
+        let missing_ssh = inspect_fixture(
+            "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere\n",
+        );
+        assert!(missing_ssh[0].severity == DiagnosticSeverity::Fail);
+        assert!(
+            missing_ssh[0]
+                .evidence
+                .iter()
+                .any(|item| item.contains("managed SSH TCP port 22"))
+        );
+        assert_eq!(
+            missing_ssh[0].remediation_id.as_deref(),
+            Some("security/ufw")
+        );
+
+        let stale = inspect_fixture(
+            "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n22/tcp ALLOW IN Anywhere # mistborn:security/ufw:ssh\n80/tcp ALLOW IN Anywhere # mistborn:security/ufw:public\n443/tcp ALLOW IN Anywhere # mistborn:security/ufw:public\n8080/tcp ALLOW IN Anywhere # mistborn:security/ufw:public\n",
+        );
+        assert_eq!(stale[0].severity, DiagnosticSeverity::Fail);
+        assert_eq!(stale[0].remediation_id, None);
+        assert!(
+            stale
+                .iter()
+                .any(|item| item.id == "security/ufw/manual-cleanup")
+        );
+        assert!(
+            !stale_ufw_managed_ports(
+                "8081/tcp ALLOW IN Anywhere\n",
+                desired.firewall.as_ref().unwrap(),
+                Some(&desired)
+            )
+            .iter()
+            .any(|issue| issue.contains("8081"))
+        );
     }
 
     #[test]
@@ -1702,13 +2067,100 @@ mod tests {
             "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=true\npublic_remote_access=true\nlan_cidr='192.168.1.0/24'\ntailscale=true\n",
         ).unwrap();
         let plex = desired.firewall.unwrap().plex.unwrap();
-        let profile = "[Plex]\ntitle=Plex\nports=32400/tcp\n";
-        let status = "32400/tcp ALLOW IN Anywhere\n32400/tcp ALLOW IN 192.168.1.0/24\n32400/tcp on tailscale0 ALLOW IN Anywhere\n";
-        assert!(compare_plex_profile_and_rules(Some(profile), status, &plex).is_empty());
+        let status = "To                         Action      From\n--                         ------      ----\n32400/tcp                  ALLOW IN    Anywhere                  # mistborn:security/plex-firewall:public\nplexmediaserver-all        ALLOW IN    192.168.1.0/24             # mistborn:security/plex-firewall:lan\nplexmediaserver-all on tailscale0 ALLOW IN Anywhere             # mistborn:security/plex-firewall:tailscale\n";
         assert!(
-            !compare_plex_profile_and_rules(Some(profile), "32400/tcp ALLOW IN Anywhere\n", &plex)
+            compare_plex_profile_and_rules(Some(PLEX_UFW_PROFILE), status, &plex)
+                .issues
                 .is_empty()
         );
+        assert!(
+            !compare_plex_profile_and_rules(
+                Some(PLEX_UFW_PROFILE),
+                "32400/tcp ALLOW IN Anywhere\n",
+                &plex
+            )
+            .issues
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn plex_profile_requires_exact_standard_dlna_and_all_port_sets() {
+        assert!(plex_profile_is_expected(PLEX_UFW_PROFILE));
+        assert!(plex_profile_is_expected(
+            &PLEX_UFW_PROFILE.replace('|', ",")
+        ));
+        let missing_dlna = PLEX_UFW_PROFILE.replace("1900/udp|32469/tcp", "1900/udp");
+        assert!(!plex_profile_is_expected(&missing_dlna));
+        let extra_public_service = PLEX_UFW_PROFILE.replace(
+            "ports=32400/tcp|3005/tcp",
+            "ports=32400/tcp|22/tcp|3005/tcp",
+        );
+        assert!(!plex_profile_is_expected(&extra_public_service));
+    }
+
+    #[test]
+    fn plex_app_scope_must_match_exact_profile_source_and_interface() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=true\npublic_remote_access=true\nlan_cidr='192.168.1.0/24'\ntailscale=true\n",
+        )
+        .unwrap();
+        let plex = desired.firewall.unwrap().plex.unwrap();
+        let mismatched_app = "32400/tcp ALLOW IN Anywhere\nplexmediaserver ALLOW IN 192.168.1.0/24\nplexmediaserver-all on eth0 ALLOW IN Anywhere\n";
+        let issues = compare_plex_profile_and_rules(Some(PLEX_UFW_PROFILE), mismatched_app, &plex);
+        assert!(
+            issues
+                .issues
+                .iter()
+                .any(|issue| issue.contains("LAN plexmediaserver-all"))
+        );
+        assert!(
+            issues
+                .issues
+                .iter()
+                .any(|issue| issue.contains("tailscale0"))
+        );
+        let overbroad = "32400/tcp ALLOW IN Anywhere\nplexmediaserver-all ALLOW IN Anywhere\nplexmediaserver-all ALLOW IN 192.168.1.0/24\nplexmediaserver-all on tailscale0 ALLOW IN Anywhere\n";
+        assert!(
+            compare_plex_profile_and_rules(Some(PLEX_UFW_PROFILE), overbroad, &plex)
+                .issues
+                .iter()
+                .any(|issue| issue.contains("all public interfaces"))
+        );
+        let raw_plex_port = "32400/tcp ALLOW IN Anywhere\n3005/tcp ALLOW IN Anywhere\n";
+        let raw_exposure =
+            compare_plex_profile_and_rules(Some(PLEX_UFW_PROFILE), raw_plex_port, &plex);
+        assert!(raw_exposure.requires_manual_cleanup);
+        assert!(
+            raw_exposure
+                .issues
+                .iter()
+                .any(|issue| issue.contains("Plex profile port 3005/tcp"))
+        );
+        let raw_plex_udp = "32400/tcp ALLOW IN Anywhere\n32412/udp ALLOW IN Anywhere\n";
+        assert!(
+            compare_plex_profile_and_rules(Some(PLEX_UFW_PROFILE), raw_plex_udp, &plex)
+                .requires_manual_cleanup
+        );
+
+        let no_local_scopes = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=true\npublic_remote_access=true\ntailscale=false\n",
+        )
+        .unwrap();
+        let no_local_scopes = no_local_scopes.firewall.unwrap().plex.unwrap();
+        let stale_scope = "32400/tcp ALLOW IN Anywhere\nplexmediaserver-all ALLOW IN 192.168.1.0/24\nplexmediaserver-all on tailscale0 ALLOW IN Anywhere\n";
+        let stale =
+            compare_plex_profile_and_rules(Some(PLEX_UFW_PROFILE), stale_scope, &no_local_scopes);
+        assert!(stale.requires_manual_cleanup);
+        assert!(
+            stale
+                .issues
+                .iter()
+                .any(|issue| issue.contains("unexpected plexmediaserver-all app allow rule from"))
+        );
+        assert!(stale.issues.iter().any(|issue| {
+            issue.contains("unexpected plexmediaserver-all app allow rule on interface tailscale0")
+        }));
     }
 
     #[test]
@@ -1717,9 +2169,14 @@ mod tests {
             "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=false\npublic_remote_access=false\ntailscale=false\n",
         ).unwrap();
         let plex = desired.firewall.unwrap().plex.unwrap();
-        assert!(compare_plex_profile_and_rules(None, "", &plex).is_empty());
+        assert!(
+            compare_plex_profile_and_rules(None, "", &plex)
+                .issues
+                .is_empty()
+        );
         assert!(
             !compare_plex_profile_and_rules(None, "32400/tcp ALLOW IN Anywhere\n", &plex)
+                .issues
                 .is_empty()
         );
     }
