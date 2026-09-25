@@ -54,8 +54,89 @@ pub enum ConfirmationPolicy {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProposedAction {
-    pub id: String,
+    pub kind: ActionKind,
     pub description: String,
+}
+
+/// Operations the reconciliation engine is allowed to request. This is deliberately
+/// closed: plans cannot encode a program name, shell fragment, or arbitrary arguments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ActionKind {
+    InstallPackage { package: PackageName },
+    EnableService { service: ServiceName },
+    RestartService { service: ServiceName },
+    ApplyBoundedRemediation { remediation: RemediationId },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemediationId {
+    SecurityUfw,
+    SecurityPlexFirewall,
+    SecurityFail2ban,
+    SecuritySsh,
+    SecurityTailscale,
+    PackagesDocker,
+    PackagesTailscale,
+    PackagesUfw,
+    PackagesFail2banClient,
+}
+
+impl RemediationId {
+    pub const ALL: [Self; 9] = [
+        Self::SecurityUfw,
+        Self::SecurityPlexFirewall,
+        Self::SecurityFail2ban,
+        Self::SecuritySsh,
+        Self::SecurityTailscale,
+        Self::PackagesDocker,
+        Self::PackagesTailscale,
+        Self::PackagesUfw,
+        Self::PackagesFail2banClient,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SecurityUfw => "security/ufw",
+            Self::SecurityPlexFirewall => "security/plex-firewall",
+            Self::SecurityFail2ban => "security/fail2ban",
+            Self::SecuritySsh => "security/ssh",
+            Self::SecurityTailscale => "security/tailscale",
+            Self::PackagesDocker => "packages/docker",
+            Self::PackagesTailscale => "packages/tailscale",
+            Self::PackagesUfw => "packages/ufw",
+            Self::PackagesFail2banClient => "packages/fail2ban-client",
+        }
+    }
+}
+
+impl std::str::FromStr for RemediationId {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|id| id.as_str() == value)
+            .ok_or_else(|| format!("unknown remediation: {value}"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageName {
+    Docker,
+    Tailscale,
+    Ufw,
+    Fail2ban,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceName {
+    Docker,
+    Tailscaled,
+    Ufw,
+    Fail2ban,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +147,10 @@ pub struct Remediation {
     pub dependencies: Vec<String>,
     pub actions: Vec<ProposedAction>,
     pub verification: String,
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

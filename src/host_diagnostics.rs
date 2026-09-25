@@ -65,6 +65,14 @@ pub enum ReportKind {
 }
 
 pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
+    inspect_with_package_lookup(kind, runner, find_executable)
+}
+
+pub(super) fn inspect_with_package_lookup(
+    kind: ReportKind,
+    runner: &impl CommandAdapter,
+    find_package: impl Fn(&str) -> Option<PathBuf>,
+) -> Report {
     let mut observed = ObservedState::default();
     let mut diagnostics = Vec::new();
     let mut versions = BTreeMap::new();
@@ -79,7 +87,7 @@ pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
             config_schema_version = Some(1);
             observed.facts.insert(
                 "desired_config".to_owned(),
-                InspectionStatus::Available(json!({"loaded": true})),
+                InspectionStatus::Available(json!({"loaded": true, "config": desired})),
             );
             Some(desired)
         }
@@ -130,7 +138,7 @@ pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
                 && desired
                     .as_ref()
                     .is_some_and(|state| state.firewall.is_some()));
-        let path = match find_executable(package) {
+        let path = match find_package(package) {
             Some(path) => path.display().to_string(),
             None => {
                 observed.facts.insert(
@@ -149,12 +157,13 @@ pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
                         vec![],
                         if required {
                             Some(format!("packages/{package}"))
+                        } else if package == "fail2ban-client" && kind == ReportKind::Doctor {
+                            Some("packages/fail2ban-client".to_owned())
                         } else {
                             None
                         },
                     ));
                 }
-                incomplete |= required;
                 continue;
             }
         };
@@ -259,6 +268,21 @@ pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
 
     for service in ["docker", "tailscaled", "fail2ban"] {
         let key = format!("service.{service}");
+        let required_package = match service {
+            "docker" => Some("docker"),
+            "tailscaled" => Some("tailscale"),
+            "fail2ban" => Some("fail2ban-client"),
+            _ => None,
+        };
+        if required_package.is_some_and(|package| package_is_missing(&observed, package)) {
+            observed.facts.insert(
+                key,
+                InspectionStatus::Unavailable {
+                    reason: format!("{} package is not installed", required_package.unwrap()),
+                },
+            );
+            continue;
+        }
         match runner.run("systemctl", &["is-active", service]) {
             Ok(output) => match parse_systemctl_active(&output) {
                 Ok(true) => {
@@ -497,6 +521,13 @@ pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
     }
 }
 
+fn package_is_missing(observed: &ObservedState, package: &str) -> bool {
+    matches!(
+        observed.facts.get(&format!("package.{package}")),
+        Some(InspectionStatus::Available(value)) if value["installed"] == false
+    )
+}
+
 fn summarize(observed: &ObservedState, diagnostics: &[Diagnostic]) -> ReportSummary {
     let mut summary = ReportSummary::default();
     for diagnostic in diagnostics {
@@ -592,6 +623,33 @@ fn inspect_ufw(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> bool {
     let managed = desired.and_then(|state| state.firewall.as_ref());
+    if package_is_missing(observed, "ufw") {
+        observed.facts.insert(
+            "firewall.ufw".to_owned(),
+            InspectionStatus::Unavailable {
+                reason: "ufw package is not installed".to_owned(),
+            },
+        );
+        observed.facts.insert(
+            "firewall.managed".to_owned(),
+            InspectionStatus::Available(json!({"managed": managed.is_some()})),
+        );
+        for fact in [
+            "firewall.policy",
+            "firewall.public_tcp_ports",
+            "plex.ufw_profile",
+            "plex.policy",
+            "plex.ufw_rules",
+        ] {
+            observed.facts.insert(
+                fact.to_owned(),
+                InspectionStatus::Unavailable {
+                    reason: "ufw package is not installed".to_owned(),
+                },
+            );
+        }
+        return false;
+    }
     let output = match runner.run("ufw", &["status", "verbose"]) {
         Ok(output) if output.status == 0 => match parse_ufw(&output.stdout) {
             Ok(parsed) => {
@@ -1031,6 +1089,32 @@ fn inspect_tailscale(
     kind: ReportKind,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> bool {
+    if package_is_missing(observed, "tailscale") {
+        for fact in [
+            "tailscale.status",
+            "tailscale.preferences",
+            "tailscale.policy",
+        ] {
+            observed.facts.insert(
+                fact.to_owned(),
+                InspectionStatus::Unavailable {
+                    reason: "tailscale package is not installed".to_owned(),
+                },
+            );
+        }
+        if kind == ReportKind::Doctor
+            && desired.and_then(|state| state.tailscale.as_ref()).is_none()
+        {
+            diagnostics.push(diag(
+                "security/tailscale",
+                DiagnosticSeverity::Warn,
+                "Tailscale policy is unmanaged",
+                vec![],
+                None,
+            ));
+        }
+        return false;
+    }
     match runner.run("tailscale", &["status", "--json"]) {
         Ok(output) if output.status == 0 => match serde_json::from_str::<Value>(&output.stdout) {
             Ok(value) => {
@@ -1462,7 +1546,10 @@ mod tests {
             "systemctl is-active docker".to_owned(),
             output("inactive\n", 3),
         );
-        let report = inspect(ReportKind::Doctor, &FixtureRunner(fixtures));
+        let report =
+            inspect_with_package_lookup(ReportKind::Doctor, &FixtureRunner(fixtures), |package| {
+                Some(PathBuf::from(format!("/fixture/{package}")))
+            });
         assert!(
             matches!(report.observed.facts.get("service.docker"), Some(InspectionStatus::Available(value)) if value["active"] == false)
         );
@@ -1579,6 +1666,37 @@ mod tests {
     }
 
     #[test]
+    fn missing_ufw_package_leaves_policy_unavailable_without_inventing_security_drift() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n[firewall.plex]\nenabled=true\npublic_remote_access=true\ntailscale=true\n",
+        ).unwrap();
+        let fixtures = FixtureRunner(HashMap::new());
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "package.ufw".into(),
+            InspectionStatus::Available(json!({"installed": false, "required": true})),
+        );
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_ufw(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert!(matches!(
+            observed.facts.get("firewall.policy"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+        assert!(
+            !diagnostics.iter().any(
+                |item| item.remediation_id.as_deref() == Some("security/ufw")
+                    || item.remediation_id.as_deref() == Some("security/plex-firewall")
+            )
+        );
+    }
+
+    #[test]
     fn plex_effective_profile_and_rules_are_compared() {
         let desired = mistborn_bootstrap::config::DesiredState::from_toml(
             "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=true\npublic_remote_access=true\nlan_cidr='192.168.1.0/24'\ntailscale=true\n",
@@ -1669,6 +1787,97 @@ mod tests {
     }
 
     #[test]
+    fn missing_tailscale_package_leaves_policy_unavailable_without_security_drift() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[tailscale]\nssh=true\nadvertise_exit_node=false\nauto_update=true\n",
+        ).unwrap();
+        let fixtures = FixtureRunner(HashMap::new());
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "package.tailscale".into(),
+            InspectionStatus::Available(json!({"installed": false, "required": true})),
+        );
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_tailscale(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert!(matches!(
+            observed.facts.get("tailscale.policy"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+        assert!(
+            !diagnostics
+                .iter()
+                .any(|item| item.remediation_id.as_deref() == Some("security/tailscale"))
+        );
+    }
+
+    #[test]
+    fn missing_required_package_is_available_drift_not_incomplete_inspection() {
+        let report =
+            inspect_with_package_lookup(ReportKind::Doctor, &FixtureRunner(HashMap::new()), |_| {
+                None
+            });
+        assert!(!report.inspection_incomplete);
+        assert!(matches!(
+            report.observed.facts.get("package.docker"),
+            Some(InspectionStatus::Available(value)) if value["installed"] == false
+        ));
+        assert!(report.diagnostics.iter().any(|item| {
+            item.id == "package/docker"
+                && item.severity == DiagnosticSeverity::Fail
+                && item.remediation_id.as_deref() == Some("packages/docker")
+        }));
+        assert!(matches!(
+            report.observed.facts.get("service.docker"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+        assert!(matches!(
+            report.observed.facts.get("firewall.policy"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+    }
+
+    #[test]
+    fn missing_fail2ban_package_is_planned_before_service_enable() {
+        let report = inspect_with_package_lookup(
+            ReportKind::Doctor,
+            &FixtureRunner(HashMap::new()),
+            |name| (name != "fail2ban-client").then(|| PathBuf::from("/usr/bin").join(name)),
+        );
+        assert!(report.diagnostics.iter().any(|item| {
+            item.id == "package/fail2ban-client"
+                && item.severity == DiagnosticSeverity::Warn
+                && item.remediation_id.as_deref() == Some("packages/fail2ban-client")
+        }));
+        assert!(matches!(
+            report.observed.facts.get("service.fail2ban"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+        assert!(
+            !report
+                .diagnostics
+                .iter()
+                .any(|item| { item.remediation_id.as_deref() == Some("security/fail2ban") })
+        );
+        let plan = mistborn_bootstrap::reconciliation::plan(
+            &serde_json::json!({}),
+            &report.diagnostics,
+            Some("security/fail2ban".parse().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(plan.remediations.len(), 1);
+        assert_eq!(
+            plan.remediations[0].id.to_string(),
+            "packages/fail2ban-client"
+        );
+    }
+
+    #[test]
     fn all_unavailable_facts_receive_structured_diagnostics() {
         let observed = ObservedState {
             facts: BTreeMap::from([(
@@ -1728,7 +1937,10 @@ mod tests {
     fn malformed_tailscale_json_is_an_inspection_error() {
         let mut fixtures = HashMap::new();
         fixtures.insert("tailscale status --json".to_owned(), output("not-json", 0));
-        let report = inspect(ReportKind::Doctor, &FixtureRunner(fixtures));
+        let report =
+            inspect_with_package_lookup(ReportKind::Doctor, &FixtureRunner(fixtures), |package| {
+                Some(PathBuf::from(format!("/fixture/{package}")))
+            });
         assert!(matches!(
             report.observed.facts.get("tailscale.status"),
             Some(InspectionStatus::Error { message }) if message.contains("malformed JSON")

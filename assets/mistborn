@@ -330,6 +330,9 @@ usage() {
 Usage: mistborn COMMAND [ARGS]
   status                       verify installation, versions, state and configuration
   doctor                       audit Docker, Runtipi, Tailscale, rclone and security
+  plan [REMEDIATION]           compare desired configuration with host state
+  reconcile [REMEDIATION]      apply an approved host remediation
+  doctor --fix [--safe]        plan and reconcile through the same safety policy
   fix                          enable and start installed Docker/Tailscale services
   security-status              show SSH, UFW, fail2ban and Tailscale status
   tailscale-status             show Tailscale status

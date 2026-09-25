@@ -739,12 +739,11 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
         ));
     }
     let mut command_arguments = arguments[3..].to_vec();
-    if command_arguments
-        .first()
-        .is_some_and(|command| matches!(command.as_str(), "status" | "doctor"))
-        && !command_arguments.iter().any(|arg| arg == "--legacy")
+    if command_arguments.first().is_some_and(|command| {
+        matches!(command.as_str(), "status" | "doctor" | "plan" | "reconcile")
+    }) && !command_arguments.iter().any(|arg| arg == "--legacy")
     {
-        return execute_read_only_host_command(&command_arguments);
+        return execute_host_management_command(&command_arguments);
     }
     if command_arguments.iter().any(|arg| arg == "--legacy") {
         command_arguments.retain(|arg| arg != "--legacy");
@@ -829,13 +828,23 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
     }
 }
 
-fn execute_read_only_host_command(arguments: &[String]) -> Result<(), String> {
+fn execute_host_management_command(arguments: &[String]) -> Result<(), String> {
     let command = arguments.first().map(String::as_str).unwrap_or_default();
     let kind = if command == "status" {
         host_diagnostics::ReportKind::Status
-    } else {
+    } else if command == "doctor" {
         host_diagnostics::ReportKind::Doctor
+    } else if command == "plan" {
+        host_diagnostics::ReportKind::Doctor
+    } else if command == "reconcile" {
+        host_diagnostics::ReportKind::Doctor
+    } else {
+        return Err(inspection_cli_error("unsupported host command"));
     };
+    let mut fix = false;
+    let mut safe = false;
+    let mut target = None;
+    let mut explicit_yes = false;
     let mut format = "text";
     let mut index = 1;
     while index < arguments.len() {
@@ -845,10 +854,34 @@ fn execute_read_only_host_command(arguments: &[String]) -> Result<(), String> {
                 index += 2;
             }
             "--format" => return Err(inspection_cli_error("--format requires text or json")),
+            "--fix" if command == "doctor" => {
+                fix = true;
+                index += 1;
+            }
+            "--safe" if command == "doctor" || command == "reconcile" => {
+                safe = true;
+                index += 1;
+            }
+            "--yes" if command == "reconcile" || (command == "doctor" && fix) => {
+                explicit_yes = true;
+                index += 1;
+            }
             "--legacy" => {
                 return Err(inspection_cli_error(
                     "internal error: legacy command was routed to Rust",
                 ));
+            }
+            value
+                if !value.starts_with('-')
+                    && target.is_none()
+                    && matches!(command, "plan" | "reconcile") =>
+            {
+                target = Some(
+                    value
+                        .parse::<mistborn_bootstrap::domain::RemediationId>()
+                        .map_err(|error| inspection_cli_error(&error))?,
+                );
+                index += 1;
             }
             option => {
                 return Err(inspection_cli_error(&format!(
@@ -862,6 +895,18 @@ fn execute_read_only_host_command(arguments: &[String]) -> Result<(), String> {
             "unsupported output format: {format}"
         )));
     }
+    if command == "plan" || command == "reconcile" || fix {
+        return execute_reconciliation_command(
+            command,
+            kind,
+            target,
+            safe,
+            explicit_yes,
+            fix,
+            format,
+        );
+    }
+
     let report = host_diagnostics::inspect(kind, &host_diagnostics::SystemCommands);
     if format == "json" {
         println!(
@@ -910,33 +955,7 @@ fn execute_read_only_host_command(arguments: &[String]) -> Result<(), String> {
         }
         println!("{}", status_drift_line(&report.summary));
     } else {
-        for diagnostic in &report.diagnostics {
-            println!(
-                "{:4}  {}",
-                format!("{:?}", diagnostic.severity).to_uppercase(),
-                diagnostic.summary
-            );
-            if !diagnostic.evidence.is_empty() {
-                println!("      evidence: {}", diagnostic.evidence.join("; "));
-            }
-            if let Some(remediation) = &diagnostic.remediation_id {
-                println!("      remediation: {remediation}");
-            }
-            if let Some(note) = confirmation_note(diagnostic) {
-                println!("      {note}");
-            }
-        }
-        for (key, state) in &report.observed.facts {
-            match state {
-                host_diagnostics::InspectionStatus::Unavailable { reason } => {
-                    println!("WARN  {key}: unavailable ({reason})")
-                }
-                host_diagnostics::InspectionStatus::Error { message } => {
-                    println!("WARN  {key}: inspection error ({message})")
-                }
-                _ => {}
-            }
-        }
+        print_doctor_report(&report);
     }
     if report
         .diagnostics
@@ -951,6 +970,323 @@ fn execute_read_only_host_command(arguments: &[String]) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn print_doctor_report(report: &host_diagnostics::Report) {
+    for diagnostic in &report.diagnostics {
+        println!(
+            "{:4}  {}",
+            format!("{:?}", diagnostic.severity).to_uppercase(),
+            diagnostic.summary
+        );
+        if !diagnostic.evidence.is_empty() {
+            println!("      evidence: {}", diagnostic.evidence.join("; "));
+        }
+        if let Some(remediation) = &diagnostic.remediation_id {
+            println!("      remediation: {remediation}");
+        }
+        if let Some(note) = confirmation_note(diagnostic) {
+            println!("      {note}");
+        }
+    }
+    for (key, state) in &report.observed.facts {
+        match state {
+            host_diagnostics::InspectionStatus::Unavailable { reason } => {
+                println!("WARN  {key}: unavailable ({reason})")
+            }
+            host_diagnostics::InspectionStatus::Error { message } => {
+                println!("WARN  {key}: inspection error ({message})")
+            }
+            _ => {}
+        }
+    }
+}
+
+fn execute_reconciliation_command(
+    command: &str,
+    kind: host_diagnostics::ReportKind,
+    target: Option<mistborn_bootstrap::domain::RemediationId>,
+    safe: bool,
+    explicit_yes: bool,
+    fix: bool,
+    format: &str,
+) -> Result<(), String> {
+    use mistborn_bootstrap::reconciliation::{self, ApplyOptions};
+    if format == "json" && (command == "reconcile" || fix) {
+        return Err(
+            "exit-code-2: --format json is not supported for mutating commands; use text"
+                .to_owned(),
+        );
+    }
+    let report = host_diagnostics::inspect(kind, &host_diagnostics::SystemCommands);
+    let snapshot = serde_json::to_value(&report.observed).map_err(|error| error.to_string())?;
+    let proposed = reconciliation::plan(&snapshot, &report.diagnostics, target)?;
+    if format == "json" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&proposed).map_err(|error| error.to_string())?
+        );
+    } else {
+        println!(
+            "Host reconciliation plan (snapshot {})",
+            proposed.snapshot_id
+        );
+        if proposed.remediations.is_empty() {
+            println!("No remediation needed.");
+        }
+        for item in &proposed.remediations {
+            println!(
+                "{}  [{:?}]{}",
+                item.id,
+                item.risk,
+                if item.confirmation == mistborn_bootstrap::domain::ConfirmationPolicy::Explicit {
+                    "  confirmation required"
+                } else {
+                    ""
+                }
+            );
+            for action in &item.actions {
+                println!("  - {}", action.description);
+            }
+            if !item.dependencies.is_empty() {
+                println!("  depends on: {}", item.dependencies.join(", "));
+            }
+            println!("  verify: {}", item.verification);
+            if !item.available {
+                println!(
+                    "  unavailable: {}",
+                    item.unavailable_reason
+                        .as_deref()
+                        .unwrap_or("no adapter registered")
+                );
+            }
+        }
+    }
+    if command == "plan" {
+        return Ok(());
+    }
+    if proposed.remediations.is_empty() {
+        return Ok(());
+    }
+    if let Some(unavailable) = proposed.remediations.iter().find(|item| {
+        !item.available && !(safe && item.risk != mistborn_bootstrap::domain::RiskClass::Low)
+    }) {
+        return Err(format!(
+            "{} is not actionable in this release: {}",
+            unavailable.id,
+            unavailable
+                .unavailable_reason
+                .as_deref()
+                .unwrap_or("no adapter registered")
+        ));
+    }
+
+    // The selected ID is itself an explicit per-target approval. `--yes` alone
+    // never approves access or destructive changes.
+    let mut confirmed = std::collections::BTreeSet::new();
+    if let Some(target) = target {
+        confirmed.insert(target);
+    }
+    let interactive = interactive_terminal();
+    if !safe && interactive && !explicit_yes {
+        println!(
+            "Applying this plan may change host configuration. Type `apply` to approve the displayed plan:"
+        );
+        let mut answer = String::new();
+        io::stdin()
+            .read_line(&mut answer)
+            .map_err(|error| error.to_string())?;
+        if answer.trim() != "apply" {
+            return Err("reconciliation cancelled".to_owned());
+        }
+        confirmed.extend(proposed.remediations.iter().filter_map(|item| {
+            item.id
+                .parse::<mistborn_bootstrap::domain::RemediationId>()
+                .ok()
+        }));
+    }
+    if !safe && !interactive && target.is_none() {
+        return Err("exit-code-2: non-interactive reconciliation requires --safe or an explicit remediation target".to_owned());
+    }
+    let history = Path::new("/var/lib/mistborn-bootstrap/reconciliation-history.json");
+    let mut adapter = SystemReconcileAdapter;
+    if safe {
+        for item in &proposed.remediations {
+            if item.risk != mistborn_bootstrap::domain::RiskClass::Low {
+                println!("{}: skipped by --safe (risk: {:?})", item.id, item.risk);
+            }
+        }
+    }
+    let results = reconciliation::reconcile(
+        &proposed,
+        &report.diagnostics,
+        &mut adapter,
+        history,
+        &ApplyOptions {
+            safe,
+            confirmed,
+            non_interactive: !interactive || explicit_yes,
+        },
+    )
+    .map_err(|error| {
+        if error.contains("confirmation required") {
+            format!("exit-code-2: {error}")
+        } else {
+            error
+        }
+    })?;
+    if safe && results.is_empty() {
+        println!(
+            "No low-risk allowlisted remediation was selected; the listed changes remain unapplied."
+        );
+    }
+    for result in results {
+        println!(
+            "{}: {}",
+            result.remediation_id,
+            if result.verified {
+                "verified"
+            } else {
+                "failed"
+            }
+        );
+    }
+    Ok(())
+}
+
+struct SystemReconcileAdapter;
+impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAdapter {
+    fn inspect(
+        &mut self,
+    ) -> Result<mistborn_bootstrap::reconciliation::InspectionSnapshot, String> {
+        let report = host_diagnostics::inspect(
+            host_diagnostics::ReportKind::Doctor,
+            &host_diagnostics::SystemCommands,
+        );
+        let observed = serde_json::to_value(&report.observed).map_err(|error| error.to_string())?;
+        Ok(mistborn_bootstrap::reconciliation::InspectionSnapshot {
+            observed,
+            diagnostics: report.diagnostics,
+        })
+    }
+    fn apply(&mut self, action: &mistborn_bootstrap::domain::ActionKind) -> Result<(), String> {
+        use mistborn_bootstrap::domain::ActionKind;
+        let (program, args): (&str, Vec<&str>) = match action {
+            ActionKind::InstallPackage { package } => ("apt-get", package_install_args(*package)),
+            ActionKind::EnableService { service } => {
+                ("systemctl", vec!["enable", "--now", service_name(*service)])
+            }
+            ActionKind::RestartService { service } => {
+                ("systemctl", vec!["try-restart", service_name(*service)])
+            }
+            ActionKind::ApplyBoundedRemediation { remediation } => {
+                return Err(format!(
+                    "no host adapter is registered for {} yet",
+                    remediation.as_str()
+                ));
+            }
+        };
+        if !is_root() {
+            return Err("reconciliation actions require root".to_owned());
+        }
+        let status = Command::new(program)
+            .args(args)
+            .status()
+            .map_err(|error| format!("cannot start {program}: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{program} exited with {}",
+                status.code().unwrap_or(128)
+            ))
+        }
+    }
+    fn verify(
+        &mut self,
+        id: mistborn_bootstrap::domain::RemediationId,
+    ) -> Result<(bool, Vec<String>), String> {
+        let report = host_diagnostics::inspect(
+            host_diagnostics::ReportKind::Doctor,
+            &host_diagnostics::SystemCommands,
+        );
+        use mistborn_bootstrap::domain::RemediationId;
+        let (fact, predicate) = match id {
+            RemediationId::PackagesDocker => ("package.docker", "installed"),
+            RemediationId::PackagesTailscale => ("package.tailscale", "installed"),
+            RemediationId::PackagesUfw => ("package.ufw", "installed"),
+            RemediationId::PackagesFail2banClient => ("package.fail2ban-client", "installed"),
+            RemediationId::SecurityFail2ban => ("service.fail2ban", "active"),
+            _ => return Err(format!("no verifier is registered for {}", id.as_str())),
+        };
+        let satisfied = verify_observed_fact(&report.observed, fact, predicate)?;
+        Ok((satisfied, vec![format!("{fact}.{predicate}={satisfied}")]))
+    }
+}
+
+fn verify_observed_fact(
+    observed: &mistborn_bootstrap::domain::ObservedState,
+    fact: &str,
+    predicate: &str,
+) -> Result<bool, String> {
+    use mistborn_bootstrap::domain::InspectionStatus;
+    match observed.facts.get(fact) {
+        Some(InspectionStatus::Available(value)) => value
+            .get(predicate)
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| {
+                format!(
+                    "required verification predicate is missing or malformed: {fact}.{predicate}"
+                )
+            }),
+        Some(InspectionStatus::Unavailable { reason }) => {
+            Err(format!("{fact} unavailable: {reason}"))
+        }
+        Some(InspectionStatus::Error { message }) => {
+            Err(format!("{fact} inspection failed: {message}"))
+        }
+        None => Err(format!("required verification fact is missing: {fact}")),
+    }
+}
+
+fn service_name(service: mistborn_bootstrap::domain::ServiceName) -> &'static str {
+    match service {
+        mistborn_bootstrap::domain::ServiceName::Docker => "docker",
+        mistborn_bootstrap::domain::ServiceName::Tailscaled => "tailscaled",
+        mistborn_bootstrap::domain::ServiceName::Ufw => "ufw",
+        mistborn_bootstrap::domain::ServiceName::Fail2ban => "fail2ban",
+    }
+}
+
+fn package_install_args(package: mistborn_bootstrap::domain::PackageName) -> Vec<&'static str> {
+    use mistborn_bootstrap::domain::PackageName;
+    let name = match package {
+        PackageName::Docker => "docker.io",
+        PackageName::Tailscale => "tailscale",
+        PackageName::Ufw => "ufw",
+        PackageName::Fail2ban => "fail2ban",
+    };
+    vec![
+        "install",
+        "-y",
+        "--no-install-recommends",
+        "--no-remove",
+        name,
+    ]
+}
+
+fn is_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe extern "C" {
+            fn geteuid() -> u32;
+        }
+        unsafe { geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
 }
 
 fn inspection_cli_error(message: &str) -> String {
@@ -1046,6 +1382,204 @@ mod tests {
         ])
         .unwrap_err();
         assert!(error.starts_with("exit-code-2: unknown doctor option"));
+    }
+
+    #[test]
+    fn plan_routes_to_rust_before_legacy_script_lookup() {
+        let error = execute_host(&[
+            "host".to_owned(),
+            "--script".to_owned(),
+            "/missing/legacy/script".to_owned(),
+            "plan".to_owned(),
+            "--format".to_owned(),
+            "yaml".to_owned(),
+        ])
+        .unwrap_err();
+        assert!(error.starts_with("exit-code-2: unsupported output format"));
+        assert!(!error.contains("host command script not found"));
+    }
+
+    #[test]
+    fn reconcile_rejects_unknown_options_before_host_mutation() {
+        let error = execute_host(&[
+            "host".to_owned(),
+            "--script".to_owned(),
+            "/missing/legacy/script".to_owned(),
+            "reconcile".to_owned(),
+            "--unexpected".to_owned(),
+        ])
+        .unwrap_err();
+        assert!(error.starts_with("exit-code-2: unknown reconcile option"));
+        assert!(!error.contains("host command script not found"));
+    }
+
+    #[test]
+    fn mutating_json_output_is_rejected_before_host_inspection() {
+        for arguments in [
+            vec![
+                "reconcile".to_owned(),
+                "--format".to_owned(),
+                "json".to_owned(),
+            ],
+            vec![
+                "doctor".to_owned(),
+                "--fix".to_owned(),
+                "--format".to_owned(),
+                "json".to_owned(),
+            ],
+        ] {
+            let error = execute_host(
+                &[
+                    "host".to_owned(),
+                    "--script".to_owned(),
+                    "/missing/legacy/script".to_owned(),
+                ]
+                .into_iter()
+                .chain(arguments)
+                .collect::<Vec<_>>(),
+            )
+            .unwrap_err();
+            assert!(error.contains("--format json is not supported for mutating commands"));
+            assert!(!error.contains("host command script not found"));
+        }
+    }
+
+    #[test]
+    fn verifier_requires_positive_available_fact() {
+        use mistborn_bootstrap::domain::{InspectionStatus, ObservedState};
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(serde_json::json!({"active": true})),
+        );
+        assert!(verify_observed_fact(&observed, "service.fail2ban", "active").unwrap());
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(serde_json::json!({"active": false})),
+        );
+        assert!(!verify_observed_fact(&observed, "service.fail2ban", "active").unwrap());
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Unavailable {
+                reason: "systemd unavailable".into(),
+            },
+        );
+        assert!(verify_observed_fact(&observed, "service.fail2ban", "active").is_err());
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Error {
+                message: "permission denied".into(),
+            },
+        );
+        assert!(verify_observed_fact(&observed, "service.fail2ban", "active").is_err());
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(serde_json::json!({})),
+        );
+        assert!(verify_observed_fact(&observed, "service.fail2ban", "active").is_err());
+    }
+
+    #[test]
+    fn package_install_argv_forbids_automatic_removals() {
+        let args = package_install_args(mistborn_bootstrap::domain::PackageName::Docker);
+        assert!(args.contains(&"--no-remove"));
+        assert!(args.contains(&"--no-install-recommends"));
+        assert_eq!(args.last(), Some(&"docker.io"));
+    }
+
+    #[test]
+    fn missing_docker_plans_and_safe_reconciles_despite_unrelated_unavailability() {
+        use mistborn_bootstrap::domain::{
+            ActionKind, CommandAdapter, CommandOutput, InspectionStatus,
+        };
+        use mistborn_bootstrap::reconciliation::{
+            ApplyOptions, InspectionSnapshot, ReconcileAdapter,
+        };
+        struct MissingPackages;
+        impl CommandAdapter for MissingPackages {
+            fn run(&self, _: &str, _: &[&str]) -> Result<CommandOutput, String> {
+                Err("No such file or directory".into())
+            }
+        }
+        struct FakeReconciler {
+            snapshot: InspectionSnapshot,
+            applied: Vec<ActionKind>,
+        }
+        impl ReconcileAdapter for FakeReconciler {
+            fn inspect(&mut self) -> Result<InspectionSnapshot, String> {
+                Ok(self.snapshot.clone())
+            }
+            fn apply(&mut self, action: &ActionKind) -> Result<(), String> {
+                self.applied.push(action.clone());
+                self.snapshot.observed["facts"]["package.docker"] =
+                    serde_json::json!({"available": {"installed": true}});
+                Ok(())
+            }
+            fn verify(
+                &mut self,
+                id: mistborn_bootstrap::domain::RemediationId,
+            ) -> Result<(bool, Vec<String>), String> {
+                if id != mistborn_bootstrap::domain::RemediationId::PackagesDocker {
+                    return Err("unexpected target".into());
+                }
+                let observed: mistborn_bootstrap::domain::ObservedState =
+                    serde_json::from_value(self.snapshot.observed.clone())
+                        .map_err(|error| error.to_string())?;
+                let installed = verify_observed_fact(&observed, "package.docker", "installed")?;
+                Ok((installed, vec!["package.docker.installed=true".into()]))
+            }
+        }
+
+        let report = host_diagnostics::inspect_with_package_lookup(
+            host_diagnostics::ReportKind::Doctor,
+            &MissingPackages,
+            |name| (name != "docker").then(|| std::path::PathBuf::from("/usr/bin").join(name)),
+        );
+        assert!(!report.inspection_incomplete);
+        let mut observed = serde_json::to_value(&report.observed).unwrap();
+        observed["facts"]["unrelated.permission"] =
+            serde_json::json!({"error": {"message": "permission denied"}});
+        let proposed =
+            mistborn_bootstrap::reconciliation::plan(&observed, &report.diagnostics, None).unwrap();
+        assert_eq!(
+            proposed
+                .remediations
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["packages/docker"]
+        );
+        assert!(proposed.remediations[0].available);
+        let mut fake = FakeReconciler {
+            snapshot: InspectionSnapshot {
+                observed,
+                diagnostics: report.diagnostics.clone(),
+            },
+            applied: Vec::new(),
+        };
+        let history = temporary_directory().join("reconciliation.json");
+        let results = mistborn_bootstrap::reconciliation::reconcile(
+            &proposed,
+            &report.diagnostics,
+            &mut fake,
+            &history,
+            &ApplyOptions {
+                safe: true,
+                non_interactive: true,
+                ..ApplyOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            fake.applied,
+            vec![ActionKind::InstallPackage {
+                package: mistborn_bootstrap::domain::PackageName::Docker
+            }]
+        );
+        assert!(results[0].verified);
+        assert!(
+            matches!(report.observed.facts.get("package.docker"), Some(InspectionStatus::Available(value)) if value["installed"] == false)
+        );
     }
 
     #[test]

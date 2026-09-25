@@ -147,6 +147,38 @@ metadata, severity/error counts, and `drift_count`) alongside observed facts
 and diagnostics. CLI usage and format errors exit with status 2; drift exits 1.
 `sudo mistborn fix` enables and starts installed Docker and Tailscale services;
 it leaves firewall and SSH configuration untouched.
+
+`mistborn plan [REMEDIATION]` is a read-only host reconciliation plan. It
+compares the loaded desired configuration with current observations, orders
+drifted work by dependency, and reports risk, verification, and adapter
+availability. Use `--format json` for a machine-readable plan. The existing
+`mistborn-bootstrap plan COLLECTION` remains the installer migration plan; it
+reports task revisions and state rather than host configuration drift.
+
+`sudo mistborn reconcile [REMEDIATION]` is the host configuration mutation
+command. A named target is an explicit approval for that remediation. SSH,
+UFW, Plex firewall, and Tailscale access changes remain Access risk and always
+need an explicit target or interactive approval; `--yes` alone never approves
+them. Without a target, an interactive invocation displays the complete plan
+and requires typing `apply`. Non-interactive runs should use
+`sudo mistborn reconcile packages/docker` for an explicit target or
+`sudo mistborn doctor --fix --safe` for the low-risk allowlist. `--safe` only
+selects registered low-risk package and service actions; it does not promote
+warnings into repairs. Mutating commands currently require text output so the
+result and verification remain unambiguous.
+
+`mistborn doctor --fix` composes the same doctor, planner, and reconciler. It
+shows the proposed work and asks for approval before applying it;
+`mistborn doctor --fix --safe` applies only low-risk allowlisted actions.
+Both forms use the ordinary reconciliation lock, fresh inspection, event
+history, and post-apply verification.
+
+Phase 3 exposes remediation IDs before every domain has an apply adapter. A
+plan labels unsupported remediations as unavailable, and `reconcile` refuses
+them without mutation. In this release, SSH, UFW/Plex firewall, and Tailscale
+reconciliation are unavailable pending their Phase 4 adapters. Read-only
+diagnostics and planning for those areas remain available.
+
 `sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
 the latest stable bootstrap release. Existing completed setup stages remain
 skipped while the host-tool stage is refreshed. `sudo mistborn update-runtipi`
