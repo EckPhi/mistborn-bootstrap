@@ -10,20 +10,6 @@ for command in docker tailscale rclone ufw fail2ban-client systemctl sshd; do
   ln -s mock "$fixture/bin/$command"
 done
 
-rm -f "$fixture/plex-profile"
-if drift_output="$(
-  PATH="$fixture/bin:/usr/bin:/bin" \
-  RUNTIPI_PATH="$fixture/runtipi" \
-  MISTBORN_STATE_DIR="$fixture/state" \
-  MISTBORN_RUNNER_PATH="$fixture/runner" \
-  MISTBORN_PLEX_UFW_PROFILE="$fixture/plex-profile" \
-  MISTBORN_BOOTSTRAP_VERSION=v0.8.0 \
-    bash "$root/assets/mistborn" status
-)"; then
-  printf 'status unexpectedly accepted a missing applied Plex profile\n' >&2
-  exit 1
-fi
-[[ "$drift_output" == *'FAIL  applied Plex UFW profile is missing'* ]]
 touch "$fixture/plex-profile"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$fixture/runner"
 chmod +x "$fixture/runner"
@@ -85,3 +71,18 @@ for expected in \
     exit 1
   }
 done
+
+rm -f "$fixture/plex-profile"
+if drift_output="$(
+  PATH="$fixture/bin:/usr/bin:/bin" \
+  RUNTIPI_PATH="$fixture/runtipi" \
+  MISTBORN_STATE_DIR="$fixture/state" \
+  MISTBORN_RUNNER_PATH="$fixture/runner" \
+  MISTBORN_PLEX_UFW_PROFILE="$fixture/plex-profile" \
+  MISTBORN_BOOTSTRAP_VERSION=v0.8.0 \
+    bash "$root/assets/mistborn" status
+)"; then
+  printf 'status unexpectedly accepted a missing applied Plex profile\n' >&2
+  exit 1
+fi
+[[ "$drift_output" == *'FAIL  applied Plex UFW profile is missing'* ]]
