@@ -2,6 +2,7 @@ mod command_dashboard;
 mod dashboard;
 mod host_diagnostics;
 mod input;
+mod package_service_adapter;
 mod plan;
 mod progress;
 mod ssh_adapter;
@@ -1750,35 +1751,34 @@ impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAda
     }
     fn apply(&mut self, action: &mistborn_bootstrap::domain::ActionKind) -> Result<(), String> {
         use mistborn_bootstrap::domain::ActionKind;
-        let (program, args): (&str, Vec<&str>) = match action {
-            ActionKind::InstallPackage { package } => ("apt-get", package_install_args(*package)),
-            ActionKind::EnableService { service } => {
-                ("systemctl", vec!["enable", "--now", service_name(*service)])
+        match action {
+            ActionKind::InstallPackage { package } => {
+                if !is_root() {
+                    return Err("reconciliation actions require root".to_owned());
+                }
+                package_service_adapter::PackageServiceAdapter {
+                    runner: package_service_adapter::ProcessRunner,
+                }
+                .install_package(*package)
             }
-            ActionKind::RestartService { service } => {
-                ("systemctl", vec!["try-restart", service_name(*service)])
+            ActionKind::EnableService { service } => {
+                if !is_root() {
+                    return Err("reconciliation actions require root".to_owned());
+                }
+                package_service_adapter::PackageServiceAdapter {
+                    runner: package_service_adapter::ProcessRunner,
+                }
+                .enable_and_start(*service)
+            }
+            ActionKind::RestartService { .. } => {
+                Err("restart actions are not available through safe reconciliation".into())
             }
             ActionKind::ApplyBoundedRemediation { remediation } => {
                 if !is_root() {
                     return Err("reconciliation actions require root".to_owned());
                 }
-                return apply_security_remediation(*remediation);
+                apply_security_remediation(*remediation)
             }
-        };
-        if !is_root() {
-            return Err("reconciliation actions require root".to_owned());
-        }
-        let status = Command::new(program)
-            .args(args)
-            .status()
-            .map_err(|error| format!("cannot start {program}: {error}"))?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!(
-                "{program} exited with {}",
-                status.code().unwrap_or(128)
-            ))
         }
     }
     fn verify(
@@ -1868,32 +1868,6 @@ fn verify_observed_fact(
         }
         None => Err(format!("required verification fact is missing: {fact}")),
     }
-}
-
-fn service_name(service: mistborn_bootstrap::domain::ServiceName) -> &'static str {
-    match service {
-        mistborn_bootstrap::domain::ServiceName::Docker => "docker",
-        mistborn_bootstrap::domain::ServiceName::Tailscaled => "tailscaled",
-        mistborn_bootstrap::domain::ServiceName::Ufw => "ufw",
-        mistborn_bootstrap::domain::ServiceName::Fail2ban => "fail2ban",
-    }
-}
-
-fn package_install_args(package: mistborn_bootstrap::domain::PackageName) -> Vec<&'static str> {
-    use mistborn_bootstrap::domain::PackageName;
-    let name = match package {
-        PackageName::Docker => "docker.io",
-        PackageName::Tailscale => "tailscale",
-        PackageName::Ufw => "ufw",
-        PackageName::Fail2ban => "fail2ban",
-    };
-    vec![
-        "install",
-        "-y",
-        "--no-install-recommends",
-        "--no-remove",
-        name,
-    ]
 }
 
 fn is_root() -> bool {
@@ -2152,14 +2126,6 @@ mod tests {
             InspectionStatus::Available(serde_json::json!({})),
         );
         assert!(verify_observed_fact(&observed, "service.fail2ban", "active").is_err());
-    }
-
-    #[test]
-    fn package_install_argv_forbids_automatic_removals() {
-        let args = package_install_args(mistborn_bootstrap::domain::PackageName::Docker);
-        assert!(args.contains(&"--no-remove"));
-        assert!(args.contains(&"--no-install-recommends"));
-        assert_eq!(args.last(), Some(&"docker.io"));
     }
 
     #[test]
