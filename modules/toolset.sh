@@ -52,6 +52,16 @@ mistborn_render_desired_config() {
       "$(mistborn_config_bool "${MISTBORN_TAILSCALE_EXIT_NODE:-0}")" \
       "$(mistborn_config_bool "${MISTBORN_TAILSCALE_AUTO_UPDATE:-0}")" >>"$output" || return 1
   fi
+
+  if [[ "${MISTBORN_HARDEN+x}" == x && "${MISTBORN_HARDEN:-0}" == 1 ]] \
+    && mistborn_config_task_applied security/ssh \
+    && mistborn_config_task_applied security/fail2ban; then
+    local maxretry="${MISTBORN_FAIL2BAN_MAXRETRY:-3}" bantime="${MISTBORN_FAIL2BAN_BANTIME:-3600}"
+    [[ "$maxretry" =~ ^[0-9]+$ ]] && ((10#$maxretry > 0)) || return 1
+    [[ "$bantime" =~ ^[0-9]+$ ]] && ((10#$bantime > 0)) || return 1
+    printf '\n[fail2ban]\nenabled = true\n\n[fail2ban.sshd]\nenabled = true\nmaxretry = %s\nbantime = %s\n' \
+      "$maxretry" "$bantime" >>"$output"
+  fi
 }
 
 mistborn_publish_desired_config() {

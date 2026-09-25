@@ -63,6 +63,8 @@
           <p class="warning"><strong>Prevent lockout:</strong> verify key-based SSH access in a second session before enabling hardening.</p>
           <div class="fields">
             <label>SSH port<input id="ssh-port" type="number" min="1" max="65535" value="22" inputmode="numeric"></label>
+            <label>Fail2ban SSH max retries<input id="fail2ban-maxretry" type="number" min="1" value="3" inputmode="numeric"></label>
+            <label>Fail2ban ban duration (seconds)<input id="fail2ban-bantime" type="number" min="1" value="3600" inputmode="numeric"></label>
             <label>Additional TCP ports<input id="tcp-ports" placeholder="80, 443" inputmode="numeric"></label>
             <label>Plex LAN CIDR<input id="plex-lan-cidr" placeholder="192.168.1.0/24" inputmode="numeric"><small>Optional: permits Plex discovery and DLNA only from this IPv4 network.</small></label>
           </div>

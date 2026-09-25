@@ -119,8 +119,9 @@ sudo mistborn update-appstores
 
 It also installs `/etc/mistborn/config.toml`, the versioned desired-state
 configuration used by the Rust host-management engine. On a fresh installation
-it adopts only explicitly requested SSH, firewall, Plex, and Tailscale settings
-whose installer tasks completed successfully. Other areas remain unmanaged.
+it adopts only explicitly requested SSH, firewall, Plex, Tailscale, and
+fail2ban settings whose installer tasks completed successfully. Other areas
+remain unmanaged.
 Upgrades never infer policy from the live host, and an existing configuration
 is never overwritten. A complete, non-secret example is available at
 `/usr/local/share/mistborn/config.toml.example`. Reinstalling or upgrading does
@@ -157,9 +158,9 @@ reports task revisions and state rather than host configuration drift.
 
 `sudo mistborn reconcile [REMEDIATION]` is the host configuration mutation
 command. A named target is an explicit approval for that remediation. SSH,
-UFW, Plex firewall, and Tailscale access changes remain Access risk and always
-need an explicit target or interactive approval; `--yes` alone never approves
-them. Without a target, an interactive invocation displays the complete plan
+UFW, Plex firewall, Tailscale access, and fail2ban jail-policy changes remain
+Access risk and always need an explicit target or interactive approval;
+`--yes` alone never approves them. Without a target, an interactive invocation displays the complete plan
 and requires typing `apply`. Non-interactive runs should use
 `sudo mistborn reconcile packages/docker` for an explicit target or
 `sudo mistborn doctor --fix --safe` for the low-risk allowlist. `--safe` only
@@ -167,21 +168,39 @@ selects registered low-risk package and service actions; it does not promote
 warnings into repairs. Mutating commands currently require text output so the
 result and verification remain unambiguous.
 
+Fail2ban service activation is Low risk. Applying the managed sshd jail policy
+is a separate Access-risk remediation because aggressive ban thresholds can
+interrupt SSH access:
+
+```bash
+sudo mistborn plan security/fail2ban-policy
+sudo mistborn reconcile security/fail2ban-policy
+```
+
+The adapter writes only `/etc/fail2ban/jail.d/99-mistborn-bootstrap.local`,
+validates with `fail2ban-client -t`, and verifies the effective jail values.
+It refuses to replace an unowned file and leaves `jail.local` and other
+administrator configuration untouched. If later-loaded config overrides the
+managed values, verification reports drift for manual review.
+
 `mistborn doctor --fix` composes the same doctor, planner, and reconciler. It
 shows the proposed work and asks for approval before applying it;
 `mistborn doctor --fix --safe` applies only low-risk allowlisted actions.
 Both forms use the ordinary reconciliation lock, fresh inspection, event
 history, and post-apply verification.
 
-Phase 4 has added scoped Rust adapters for `security/ufw` and
-`security/plex-firewall`. UFW remediation adds marked rules and applies the
-configured default incoming policy without deleting rules; enabling default-
-deny requires a managed SSH port so access is opened first. The Plex profile is
+Phase 4 has added scoped Rust adapters for `security/ufw`,
+`security/plex-firewall`, and managed fail2ban sshd policy. UFW remediation adds
+marked rules and applies the configured default incoming policy without
+deleting rules; enabling default-deny requires a managed SSH port so access is
+opened first. The Plex profile is
 atomically written only when absent or already marked Mistborn-owned. Rules or
 profiles that must be removed (for example, disabling Plex access) are not
-deleted automatically and require separate operator cleanup. Both areas
-remain Access risk and require explicit approval. SSH and Tailscale remain
-unavailable pending their Phase 4 adapters.
+deleted automatically and require separate operator cleanup. UFW and Plex
+policy changes remain Access risk and require explicit approval. SSH and
+Tailscale remain unavailable pending their Phase 4 adapters. Fail2ban service
+activation remains low-risk, while jail-policy writes require explicit
+Access-risk approval.
 
 `sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
 the latest stable bootstrap release. Existing completed setup stages remain

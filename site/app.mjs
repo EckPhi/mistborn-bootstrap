@@ -12,6 +12,8 @@ const selectionFields = {
   rclone: ["rclone", "checkbox"],
   harden: ["harden", "checkbox"],
   sshPort: ["ssh-port", "number"],
+  fail2banMaxretry: ["fail2ban-maxretry", "number"],
+  fail2banBantime: ["fail2ban-bantime", "number"],
   tcpPorts: ["tcp-ports", "text"],
   disablePassword: ["disable-password", "checkbox"],
   tailscaleOnly: ["tailscale-only", "checkbox"],
@@ -39,6 +41,8 @@ export function selectionFromURL(search, allowedReleases) {
     rclone: value("rclone", "0") === "1",
     harden: value("harden", "0") === "1",
     sshPort: Number(value("sshPort", "22")),
+    fail2banMaxretry: Number(value("fail2banMaxretry", "3")),
+    fail2banBantime: Number(value("fail2banBantime", "3600")),
     tcpPorts: tcpPortsText.split(/[\s,]+/).filter(Boolean).map(Number),
     tcpPortsText,
     disablePassword: value("disablePassword", "1") === "1",
@@ -67,6 +71,8 @@ export function validate(config) {
   const errors = [];
   if (config.user && !/^[a-z_][a-z0-9_-]*\$?$/i.test(config.user)) errors.push("Enter a valid Linux username.");
   if (config.harden && (!Number.isInteger(config.sshPort) || config.sshPort < 1 || config.sshPort > 65535)) errors.push("SSH port must be between 1 and 65535.");
+  if (config.harden && (!Number.isInteger(config.fail2banMaxretry) || config.fail2banMaxretry < 1)) errors.push("Fail2ban max retries must be a positive whole number.");
+  if (config.harden && (!Number.isInteger(config.fail2banBantime) || config.fail2banBantime < 1)) errors.push("Fail2ban ban duration must be a positive whole number of seconds.");
   if (config.harden && config.tcpPorts.some(port => !Number.isInteger(port) || port < 1 || port > 65535)) errors.push("Additional TCP ports must be numbers between 1 and 65535.");
   if (config.harden && config.plexUfw && config.plexLanCidr && !validIPv4Cidr(config.plexLanCidr)) errors.push("Plex LAN CIDR must be an IPv4 network such as 192.168.1.0/24.");
   return errors;
@@ -97,6 +103,7 @@ export function buildCommand(config, releaseInstallerAvailable = false) {
     if (config.rclone) environment.push("MISTBORN_RCLONE_CONFIGURE=1");
     if (config.harden) {
       environment.push("MISTBORN_HARDEN=1", `MISTBORN_SSH_PORT=${config.sshPort}`);
+      environment.push(`MISTBORN_FAIL2BAN_MAXRETRY=${config.fail2banMaxretry}`, `MISTBORN_FAIL2BAN_BANTIME=${config.fail2banBantime}`);
       if (!config.disablePassword) environment.push("MISTBORN_DISABLE_PASSWORD_AUTH=0");
       if (config.tailscaleOnly) environment.push("MISTBORN_TAILSCALE_ONLY=1");
       if (config.tcpPorts.length) environment.push(`MISTBORN_ALLOWED_TCP_PORTS=${shellQuote(config.tcpPorts.join(" "))}`);
@@ -124,6 +131,7 @@ export function summarize(config) {
   if (config.rclone && config.collection === "server") items.push("Open interactive rclone configuration");
   if (config.harden && config.collection === "server") {
     items.push(`Harden SSH on port ${config.sshPort} and enable UFW/fail2ban`);
+    items.push(`Fail2ban bans SSH after ${config.fail2banMaxretry} failed attempts for ${config.fail2banBantime} seconds`);
     items.push(config.disablePassword ? "Disable SSH password authentication" : "Keep SSH password authentication enabled");
     if (config.tcpPorts.length) items.push(`Allow additional TCP ports: ${config.tcpPorts.join(", ")}`);
     if (config.tailscaleOnly) items.push("Restrict SSH access to Tailscale");
@@ -151,6 +159,8 @@ function readConfig() {
     rclone: document.querySelector("#rclone").checked,
     harden: document.querySelector("#harden").checked,
     sshPort: Number(document.querySelector("#ssh-port").value),
+    fail2banMaxretry: Number(document.querySelector("#fail2ban-maxretry").value),
+    fail2banBantime: Number(document.querySelector("#fail2ban-bantime").value),
     tcpPorts,
     tcpPortsText,
     disablePassword: document.querySelector("#disable-password").checked,

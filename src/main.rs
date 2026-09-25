@@ -1166,6 +1166,7 @@ fn apply_security_remediation(
     match remediation {
         RemediationId::SecurityUfw => apply_ufw_policy(&desired),
         RemediationId::SecurityPlexFirewall => apply_plex_firewall(&desired),
+        RemediationId::SecurityFail2banPolicy => apply_fail2ban_policy(&desired),
         RemediationId::SecurityTailscaleSsh
         | RemediationId::SecurityTailscaleExitNode
         | RemediationId::SecurityTailscaleAutoUpdate => {
@@ -1175,6 +1176,343 @@ fn apply_security_remediation(
             "no host adapter is registered for {} yet",
             other.as_str()
         )),
+    }
+}
+
+const FAIL2BAN_DROPIN_MARKER: &str = "# Managed by Mistborn: security/fail2ban-policy";
+
+fn fail2ban_policy_port(desired: &mistborn_bootstrap::config::DesiredState) -> Result<u16, String> {
+    if let Some(port) = desired.ssh.as_ref().map(|ssh| ssh.port.get()) {
+        return Ok(port);
+    }
+    let output = Command::new("sshd")
+        .arg("-T")
+        .output()
+        .map_err(|error| format!("cannot inspect effective SSH port with sshd -T: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "sshd -T exited with {}",
+            output.status.code().unwrap_or(128)
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    parse_effective_ssh_port(&text)
+}
+
+fn parse_effective_ssh_port(text: &str) -> Result<u16, String> {
+    let ports = text
+        .lines()
+        .filter_map(|line| {
+            let (key, value) = line.split_once(' ')?;
+            (key == "port")
+                .then(|| value.trim().parse::<u16>().ok())
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    if ports.len() != 1 || ports[0] == 0 {
+        return Err(
+            "effective SSH port is unknown or ambiguous; refusing to configure fail2ban".to_owned(),
+        );
+    }
+    Ok(ports[0])
+}
+
+fn render_fail2ban_dropin(
+    policy: &mistborn_bootstrap::config::Fail2banConfig,
+    port: u16,
+) -> Result<String, String> {
+    if !policy.enabled || !policy.sshd.enabled {
+        return Err(
+            "automatic fail2ban policy application only supports an enabled service and sshd jail"
+                .to_owned(),
+        );
+    }
+    if policy.sshd.maxretry == 0 || policy.sshd.bantime == 0 || port == 0 {
+        return Err(
+            "fail2ban maxretry, bantime, and SSH port must be greater than zero".to_owned(),
+        );
+    }
+    Ok(format!(
+        "{FAIL2BAN_DROPIN_MARKER}\n[sshd]\nenabled = true\nport = {port}\nmaxretry = {}\nbantime = {}\n",
+        policy.sshd.maxretry, policy.sshd.bantime
+    ))
+}
+
+fn apply_fail2ban_policy(desired: &mistborn_bootstrap::config::DesiredState) -> Result<(), String> {
+    let policy = desired
+        .fail2ban
+        .as_ref()
+        .ok_or("fail2ban policy is unmanaged")?;
+    let port = fail2ban_policy_port(desired)?;
+    let contents = render_fail2ban_dropin(policy, port)?;
+    let directory = Path::new("/etc/fail2ban/jail.d");
+    let target = directory.join("99-mistborn-bootstrap.local");
+    ensure_real_directory(directory)?;
+    let previous = read_owned_fail2ban_dropin(&target)?;
+    atomic_replace_owned_file(&target, contents.as_bytes())?;
+    let validation = Command::new("fail2ban-client")
+        .arg("-t")
+        .output()
+        .map_err(|error| format!("cannot start fail2ban-client -t: {error}"));
+    match validation {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => {
+            let rollback = restore_owned_file(&target, previous.as_deref(), contents.as_bytes());
+            return Err(format!(
+                "fail2ban-client -t rejected desired jail config: {}; {}",
+                String::from_utf8_lossy(&output.stderr).trim(),
+                rollback.map_or_else(
+                    |error| format!("rollback failed: {error}"),
+                    |_| "prior config state restored".to_owned()
+                )
+            ));
+        }
+        Err(error) => {
+            let rollback = restore_owned_file(&target, previous.as_deref(), contents.as_bytes());
+            return Err(format!(
+                "{error}; {}",
+                rollback.map_or_else(
+                    |error| format!("rollback failed: {error}"),
+                    |_| "prior config state restored".to_owned()
+                )
+            ));
+        }
+    }
+    let service_result = run_systemctl(&["enable", "--now", "fail2ban"])
+        .and_then(|()| run_systemctl(&["restart", "fail2ban"]));
+    if let Err(error) = service_result {
+        let rollback = restore_owned_file(&target, previous.as_deref(), contents.as_bytes());
+        let restart_previous = run_systemctl(&["try-restart", "fail2ban"]);
+        return Err(format!(
+            "{error}; policy rollback: {}; previous service config restart: {}",
+            rollback.err().unwrap_or_else(|| "restored".to_owned()),
+            restart_previous.err().unwrap_or_else(|| "ok".to_owned())
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_real_directory(path: &Path) -> Result<(), String> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        if current.as_os_str().is_empty() {
+            continue;
+        }
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!(
+                    "{} is a symlink; refusing to write through it",
+                    current.display()
+                ));
+            }
+            Ok(metadata) if !metadata.is_dir() => {
+                return Err(format!("{} is not a directory", current.display()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                match fs::create_dir(&current) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => {
+                        return Err(format!("cannot create {}: {error}", current.display()));
+                    }
+                }
+                let metadata = fs::symlink_metadata(&current)
+                    .map_err(|error| format!("cannot inspect {}: {error}", current.display()))?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(format!(
+                        "{} changed to a non-directory or symlink during creation",
+                        current.display()
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(format!("cannot inspect {}: {error}", current.display()));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn read_owned_fail2ban_dropin(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("cannot inspect {}: {error}", path.display())),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "{} is a symlink; refusing to replace it",
+            path.display()
+        ));
+    }
+    let bytes =
+        fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    if !String::from_utf8_lossy(&bytes).contains(FAIL2BAN_DROPIN_MARKER) {
+        return Err(format!(
+            "{} exists but is not Mistborn-owned; refusing to overwrite it",
+            path.display()
+        ));
+    }
+    Ok(Some(bytes))
+}
+
+fn atomic_replace_owned_file(path: &Path, contents: &[u8]) -> Result<(), String> {
+    atomic_replace_with_sync(path, contents, sync_parent_directory)
+}
+
+fn atomic_replace_with_sync(
+    path: &Path,
+    contents: &[u8],
+    sync_parent: impl Fn(&Path) -> std::io::Result<()>,
+) -> Result<(), String> {
+    let parent = path.parent().ok_or("drop-in has no parent directory")?;
+    let previous = match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "{} is a symlink; refusing to replace it",
+                path.display()
+            ));
+        }
+        Ok(metadata) if !metadata.is_file() => {
+            return Err(format!("{} is not a regular file", path.display()));
+        }
+        Ok(_) => Some(
+            fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()))?,
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("cannot inspect {}: {error}", path.display())),
+    };
+    let temporary = stage_fail2ban_file(parent, contents)?;
+    fs::rename(&temporary, path).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!("cannot publish fail2ban drop-in: {error}")
+    })?;
+    if let Err(sync_error) = sync_parent(parent) {
+        let rollback = rollback_published_file(path, previous.as_deref(), contents, &sync_parent);
+        return Err(format!(
+            "cannot sync {} after publishing drop-in: {sync_error}; {}",
+            parent.display(),
+            rollback.map_or_else(
+                |error| format!("rollback failed: {error}"),
+                |_| "prior file state restored".to_owned()
+            )
+        ));
+    }
+    Ok(())
+}
+
+fn stage_fail2ban_file(parent: &Path, contents: &[u8]) -> Result<PathBuf, String> {
+    use std::io::Write;
+    for attempt in 0..100 {
+        let candidate = parent.join(format!(".mistborn-{}-{attempt}.tmp", std::process::id()));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(mut file) => {
+                use std::os::unix::fs::PermissionsExt;
+                let staged = file
+                    .write_all(contents)
+                    .and_then(|()| file.set_permissions(fs::Permissions::from_mode(0o644)))
+                    .and_then(|()| file.sync_all());
+                if let Err(error) = staged {
+                    drop(file);
+                    let _ = fs::remove_file(&candidate);
+                    return Err(format!("cannot stage fail2ban drop-in: {error}"));
+                }
+                return Ok(candidate);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("cannot stage fail2ban drop-in: {error}")),
+        }
+    }
+    Err("cannot allocate temporary fail2ban drop-in".to_owned())
+}
+
+fn rollback_published_file(
+    path: &Path,
+    previous: Option<&[u8]>,
+    expected_current: &[u8],
+    sync_parent: &impl Fn(&Path) -> std::io::Result<()>,
+) -> Result<(), String> {
+    let current = fs::read(path).map_err(|error| format!("cannot read published file: {error}"))?;
+    if current != expected_current {
+        return Err("drop-in changed concurrently; refusing to overwrite it".to_owned());
+    }
+    match previous {
+        Some(contents) => {
+            let parent = path.parent().ok_or("drop-in has no parent directory")?;
+            let temporary = stage_fail2ban_file(parent, contents)?;
+            fs::rename(&temporary, path).map_err(|error| {
+                let _ = fs::remove_file(&temporary);
+                format!("cannot restore previous drop-in: {error}")
+            })?;
+            sync_parent(parent)
+                .map_err(|error| format!("cannot sync restored drop-in directory: {error}"))
+        }
+        None => {
+            fs::remove_file(path)
+                .map_err(|error| format!("cannot remove newly published drop-in: {error}"))?;
+            let parent = path.parent().ok_or("drop-in has no parent directory")?;
+            sync_parent(parent)
+                .map_err(|error| format!("cannot sync removal of new drop-in: {error}"))
+        }
+    }
+}
+
+fn sync_parent_directory(parent: &Path) -> std::io::Result<()> {
+    fs::File::open(parent).and_then(|directory| directory.sync_all())
+}
+
+fn restore_owned_file(
+    path: &Path,
+    previous: Option<&[u8]>,
+    expected_current: &[u8],
+) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("cannot inspect {} before rollback: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "{} became a symlink; refusing rollback",
+            path.display()
+        ));
+    }
+    let current = fs::read(path)
+        .map_err(|error| format!("cannot read {} before rollback: {error}", path.display()))?;
+    if current != expected_current {
+        return Err(format!(
+            "{} changed during reconciliation; refusing to overwrite concurrent edits",
+            path.display()
+        ));
+    }
+    match previous {
+        Some(contents) => atomic_replace_owned_file(path, contents),
+        None => {
+            fs::remove_file(path)
+                .map_err(|error| format!("cannot remove failed new drop-in: {error}"))?;
+            let parent = path.parent().ok_or("drop-in has no parent directory")?;
+            sync_parent_directory(parent)
+                .map_err(|error| format!("cannot sync removal of new drop-in: {error}"))
+        }
+    }
+}
+
+fn run_systemctl(args: &[&str]) -> Result<(), String> {
+    let status = Command::new("systemctl")
+        .args(args)
+        .status()
+        .map_err(|error| format!("cannot start systemctl: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "systemctl {} exited with {}",
+            args.join(" "),
+            status.code().unwrap_or(128)
+        ))
     }
 }
 
@@ -1440,12 +1778,24 @@ impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAda
             &host_diagnostics::SystemCommands,
         );
         use mistborn_bootstrap::domain::RemediationId;
+        if id == RemediationId::SecurityFail2ban {
+            let active = verify_observed_fact(&report.observed, "service.fail2ban", "active")?;
+            let enabled =
+                verify_observed_fact(&report.observed, "service.fail2ban.enabled", "enabled")?;
+            return Ok((
+                active && enabled,
+                vec![
+                    format!("service.fail2ban.active={active}"),
+                    format!("service.fail2ban.enabled={enabled}"),
+                ],
+            ));
+        }
         let (fact, predicate) = match id {
             RemediationId::PackagesDocker => ("package.docker", "installed"),
             RemediationId::PackagesTailscale => ("package.tailscale", "installed"),
             RemediationId::PackagesUfw => ("package.ufw", "installed"),
             RemediationId::PackagesFail2banClient => ("package.fail2ban-client", "installed"),
-            RemediationId::SecurityFail2ban => ("service.fail2ban", "active"),
+            RemediationId::SecurityFail2banPolicy => ("fail2ban.policy", "compliant"),
             RemediationId::SecurityUfw => ("firewall.policy", "compliant"),
             RemediationId::SecurityPlexFirewall => ("plex.policy", "compliant"),
             RemediationId::SecurityTailscaleSsh => ("tailscale.ssh", "compliant"),
@@ -2063,6 +2413,136 @@ mod tests {
                 .iter()
                 .any(|arg| arg == "up" || arg.contains("authkey"))
         );
+    }
+
+    #[test]
+    fn fail2ban_dropin_uses_managed_ssh_port_and_owns_only_its_file() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=2222\npassword_authentication=false\nroot_login=false\n[fail2ban]\nenabled=true\n[fail2ban.sshd]\nenabled=true\nmaxretry=4\nbantime=7200\n",
+        ).unwrap();
+        let contents = render_fail2ban_dropin(
+            desired.fail2ban.as_ref().unwrap(),
+            fail2ban_policy_port(&desired).unwrap(),
+        )
+        .unwrap();
+        assert!(contents.contains("port = 2222"));
+        assert!(contents.contains("maxretry = 4"));
+        assert!(contents.contains("bantime = 7200"));
+        assert_eq!(parse_effective_ssh_port("port 2200\n"), Ok(2200));
+        assert!(parse_effective_ssh_port("port 22\nport 2222\n").is_err());
+
+        let directory = temporary_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let target = directory.join("99-mistborn-bootstrap.local");
+        assert_eq!(read_owned_fail2ban_dropin(&target).unwrap(), None);
+        assert!(atomic_replace_owned_file(&target, contents.as_bytes()).is_ok());
+        assert_eq!(fs::read_to_string(&target).unwrap(), contents);
+        assert!(restore_owned_file(&target, None, contents.as_bytes()).is_ok());
+        assert!(!target.exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn fail2ban_dropin_refuses_disabled_policy_and_unowned_replacement() {
+        let disabled = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[fail2ban]\nenabled=true\n[fail2ban.sshd]\nenabled=false\nmaxretry=3\nbantime=3600\n",
+        ).unwrap();
+        assert!(render_fail2ban_dropin(disabled.fail2ban.as_ref().unwrap(), 22).is_err());
+        let directory = temporary_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let target = directory.join("99-mistborn-bootstrap.local");
+        fs::write(&target, "operator-owned\n").unwrap();
+        let before = fs::read(&target).unwrap();
+        assert!(read_owned_fail2ban_dropin(&target).is_err());
+        assert_eq!(fs::read(&target).unwrap(), before);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn fail2ban_rollback_restores_only_unchanged_owned_contents() {
+        let directory = temporary_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let target = directory.join("99-mistborn-bootstrap.local");
+        let previous = format!("{FAIL2BAN_DROPIN_MARKER}\n[sshd]\nenabled=false\n");
+        let desired = format!("{FAIL2BAN_DROPIN_MARKER}\n[sshd]\nenabled=true\n");
+        fs::write(&target, &previous).unwrap();
+        let before = read_owned_fail2ban_dropin(&target).unwrap();
+        atomic_replace_owned_file(&target, desired.as_bytes()).unwrap();
+        restore_owned_file(&target, before.as_deref(), desired.as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), previous);
+
+        fs::write(&target, "operator concurrent edit\n").unwrap();
+        assert!(restore_owned_file(&target, None, desired.as_bytes()).is_err());
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "operator concurrent edit\n"
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn atomic_dropin_directory_sync_failure_restores_previous_file() {
+        use std::cell::Cell;
+        let directory = temporary_directory();
+        let target = directory.join("99-mistborn-bootstrap.local");
+        let previous = b"# Managed by Mistborn: security/fail2ban-policy\nold\n";
+        let desired = b"# Managed by Mistborn: security/fail2ban-policy\nnew\n";
+        fs::write(&target, previous).unwrap();
+        let calls = Cell::new(0);
+        let result = atomic_replace_with_sync(&target, desired, |_| {
+            if calls.get() == 0 {
+                calls.set(1);
+                Err(std::io::Error::other("injected fsync failure"))
+            } else {
+                Ok(())
+            }
+        });
+        let error = result.unwrap_err();
+        assert!(error.contains("injected fsync failure"));
+        assert!(error.contains("prior file state restored"));
+        assert_eq!(fs::read(&target).unwrap(), previous);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn atomic_dropin_surfaces_restoration_sync_failure() {
+        let directory = temporary_directory();
+        let target = directory.join("99-mistborn-bootstrap.local");
+        let previous = b"# Managed by Mistborn: security/fail2ban-policy\nold\n";
+        let desired = b"# Managed by Mistborn: security/fail2ban-policy\nnew\n";
+        fs::write(&target, previous).unwrap();
+        let result = atomic_replace_with_sync(&target, desired, |_| {
+            Err(std::io::Error::other("injected persistent fsync failure"))
+        });
+        let error = result.unwrap_err();
+        assert!(error.contains("rollback failed"));
+        assert!(error.contains("injected persistent fsync failure"));
+        // The bytes are restored even though the directory entry could not be durably synced.
+        assert_eq!(fs::read(&target).unwrap(), previous);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fail2ban_dropin_refuses_symlinked_directory_and_target() {
+        use std::os::unix::fs::symlink;
+        let base = fs::canonicalize(temporary_directory()).unwrap();
+        let real = base.join("real");
+        let redirected = base.join("jail.d");
+        fs::create_dir_all(&real).unwrap();
+        symlink(&real, &redirected).unwrap();
+        assert!(ensure_real_directory(&redirected).is_err());
+
+        let etc = base.join("etc");
+        fs::create_dir(&etc).unwrap();
+        let fail2ban_link = etc.join("fail2ban");
+        symlink(&real, &fail2ban_link).unwrap();
+        assert!(ensure_real_directory(&fail2ban_link.join("jail.d")).is_err());
+
+        let link = real.join("99-mistborn-bootstrap.local");
+        symlink(base.join("outside"), &link).unwrap();
+        assert!(read_owned_fail2ban_dropin(&link).is_err());
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

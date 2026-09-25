@@ -140,7 +140,11 @@ pub(super) fn inspect_with_package_lookup(
             || (package == "ufw"
                 && desired
                     .as_ref()
-                    .is_some_and(|state| state.firewall.is_some()));
+                    .is_some_and(|state| state.firewall.is_some()))
+            || (package == "fail2ban-client"
+                && desired.as_ref().is_some_and(|state| {
+                    state.fail2ban.as_ref().is_some_and(|policy| policy.enabled)
+                }));
         let path = match find_package(package) {
             Some(path) => path.display().to_string(),
             None => {
@@ -292,7 +296,7 @@ pub(super) fn inspect_with_package_lookup(
                     observed
                         .facts
                         .insert(key, InspectionStatus::Available(json!({"active": true})));
-                    if kind == ReportKind::Doctor {
+                    if kind == ReportKind::Doctor && service != "fail2ban" {
                         diagnostics.push(diag(
                             format!("service/{service}"),
                             if service == "fail2ban" {
@@ -317,7 +321,7 @@ pub(super) fn inspect_with_package_lookup(
                             json!({"active": false, "state": output.stdout.trim()}),
                         ),
                     );
-                    if kind == ReportKind::Doctor {
+                    if kind == ReportKind::Doctor && service != "fail2ban" {
                         let remediation = if service == "fail2ban" {
                             "security/fail2ban".to_owned()
                         } else {
@@ -344,7 +348,7 @@ pub(super) fn inspect_with_package_lookup(
                             message: message.clone(),
                         },
                     );
-                    if kind == ReportKind::Doctor {
+                    if kind == ReportKind::Doctor && service != "fail2ban" {
                         diagnostics.push(diag(
                             format!("service/{service}"),
                             DiagnosticSeverity::Warn,
@@ -363,7 +367,7 @@ pub(super) fn inspect_with_package_lookup(
             Err(error) => {
                 let state = command_error(error);
                 let message = inspection_message(&state);
-                if kind == ReportKind::Doctor {
+                if kind == ReportKind::Doctor && service != "fail2ban" {
                     diagnostics.push(diag(
                         format!("inspection/service/{service}"),
                         DiagnosticSeverity::Warn,
@@ -390,19 +394,6 @@ pub(super) fn inspect_with_package_lookup(
         &mut diagnostics,
     );
 
-    inspect_command(
-        runner,
-        &mut observed,
-        CommandCheck {
-            key: "fail2ban.sshd",
-            program: "fail2ban-client",
-            args: &["status", "sshd"],
-            pass: "fail2ban sshd jail available",
-            fail: "fail2ban sshd jail unavailable",
-        },
-        ReportKind::Status,
-        &mut diagnostics,
-    );
     if kind == ReportKind::Doctor
         && desired
             .as_ref()
@@ -418,8 +409,6 @@ pub(super) fn inspect_with_package_lookup(
             None,
         ));
     }
-    // fail2ban has no desired-state section in config schema v1. Keep its facts
-    // visible, but do not report a passing policy check until it is managed.
     let tailscale_incomplete = inspect_tailscale(
         runner,
         desired.as_ref(),
@@ -441,16 +430,6 @@ pub(super) fn inspect_with_package_lookup(
         ReportKind::Status,
         &mut diagnostics,
     );
-
-    if kind == ReportKind::Doctor {
-        diagnostics.push(diag(
-            "security/fail2ban",
-            DiagnosticSeverity::Warn,
-            "fail2ban policy is unmanaged",
-            vec![],
-            None,
-        ));
-    }
 
     if let Some(InspectionStatus::Available(value)) = observed.facts.get("ssh.effective") {
         match parse_sshd(
@@ -498,6 +477,14 @@ pub(super) fn inspect_with_package_lookup(
     {
         incomplete = true;
     }
+    inspect_fail2ban(
+        runner,
+        desired.as_ref(),
+        &mut observed,
+        kind,
+        &mut diagnostics,
+        &mut incomplete,
+    );
 
     observed.facts.insert(
         "versions".to_owned(),
@@ -616,6 +603,394 @@ fn inspect_command(
             observed.facts.insert(key.to_owned(), command_error(error));
         }
     }
+}
+
+fn inspect_fail2ban(
+    runner: &impl CommandAdapter,
+    desired: Option<&mistborn_bootstrap::config::DesiredState>,
+    observed: &mut ObservedState,
+    kind: ReportKind,
+    diagnostics: &mut Vec<Diagnostic>,
+    incomplete: &mut bool,
+) {
+    use mistborn_bootstrap::config::Fail2banConfig;
+    let policy = desired.and_then(|state| state.fail2ban.as_ref());
+    let managed = policy.is_some();
+    if package_is_missing(observed, "fail2ban-client") {
+        observed.facts.insert(
+            "fail2ban.sshd".to_owned(),
+            InspectionStatus::Unavailable {
+                reason: "fail2ban package is not installed".to_owned(),
+            },
+        );
+        observed.facts.insert(
+            "fail2ban.effective".to_owned(),
+            InspectionStatus::Unavailable {
+                reason: "fail2ban package is not installed".to_owned(),
+            },
+        );
+        if kind == ReportKind::Doctor
+            && let Some(policy) = policy.filter(|policy| policy.enabled)
+        {
+            diagnostics.push(diag(
+                "service/fail2ban",
+                DiagnosticSeverity::Warn,
+                "fail2ban package is missing; service cannot be active",
+                vec![],
+                Some("security/fail2ban".to_owned()),
+            ));
+            if policy.sshd.enabled {
+                let mut diagnostic = diag(
+                    "security/fail2ban-policy",
+                    DiagnosticSeverity::Fail,
+                    "fail2ban sshd jail cannot be inspected because the package is missing",
+                    vec!["install fail2ban before comparing effective jail policy".to_owned()],
+                    Some("security/fail2ban-policy".to_owned()),
+                );
+                diagnostic.risk = Some(RiskClass::Access);
+                diagnostic.confirmation_required = true;
+                diagnostics.push(diagnostic);
+            }
+        }
+        if kind == ReportKind::Doctor && !managed {
+            diagnostics.push(diag(
+                "security/fail2ban",
+                DiagnosticSeverity::Warn,
+                "fail2ban policy is unmanaged",
+                vec![],
+                None,
+            ));
+        }
+        return;
+    }
+
+    match runner.run("systemctl", &["is-enabled", "fail2ban"]) {
+        Ok(output) => {
+            let value = output.stdout.trim();
+            let enabled = output.status == 0 && value == "enabled";
+            let disabled = output.status != 0 && value == "disabled";
+            if enabled || disabled {
+                observed.facts.insert(
+                    "service.fail2ban.enabled".to_owned(),
+                    InspectionStatus::Available(json!({"enabled": enabled, "state": value})),
+                );
+            } else {
+                let message =
+                    format!("systemctl is-enabled fail2ban returned unexpected output: {value:?}");
+                observed.facts.insert(
+                    "service.fail2ban.enabled".to_owned(),
+                    InspectionStatus::Error {
+                        message: message.clone(),
+                    },
+                );
+                if managed {
+                    *incomplete = true;
+                }
+            }
+        }
+        Err(error) => {
+            let message = format!("cannot inspect fail2ban service enablement: {error}");
+            observed.facts.insert(
+                "service.fail2ban.enabled".to_owned(),
+                InspectionStatus::Error {
+                    message: message.clone(),
+                },
+            );
+            if managed {
+                *incomplete = true;
+            }
+        }
+    }
+
+    let jail_status = runner.run("fail2ban-client", &["status", "sshd"]);
+    let jail = match jail_status {
+        Ok(output) if output.status == 0 => {
+            observed.facts.insert(
+                "fail2ban.sshd".to_owned(),
+                InspectionStatus::Available(json!({"enabled": true, "output": output.stdout})),
+            );
+            Some(true)
+        }
+        Ok(output)
+            if output.status != 0 && missing_fail2ban_jail(&output.stdout, &output.stderr) =>
+        {
+            observed.facts.insert(
+                "fail2ban.sshd".to_owned(),
+                InspectionStatus::Available(json!({"enabled": false, "output": output.stderr})),
+            );
+            Some(false)
+        }
+        Ok(output) => {
+            let message = format!(
+                "fail2ban-client status sshd exited {}: {}",
+                output.status,
+                output.stderr.trim()
+            );
+            observed.facts.insert(
+                "fail2ban.sshd".to_owned(),
+                InspectionStatus::Error {
+                    message: message.clone(),
+                },
+            );
+            if managed
+                && matches!(observed.facts.get("service.fail2ban"), Some(InspectionStatus::Available(value)) if value["active"] == true)
+            {
+                *incomplete = true;
+            }
+            None
+        }
+        Err(error) => {
+            let state = command_error(error);
+            if managed
+                && matches!(observed.facts.get("service.fail2ban"), Some(InspectionStatus::Available(value)) if value["active"] == true)
+            {
+                *incomplete = true;
+            }
+            observed.facts.insert("fail2ban.sshd".to_owned(), state);
+            None
+        }
+    };
+
+    let mut effective = serde_json::Map::new();
+    if jail == Some(true) {
+        for (key, args) in [
+            ("maxretry", &["get", "sshd", "maxretry"][..]),
+            ("bantime", &["get", "sshd", "bantime"][..]),
+            ("port", &["get", "sshd", "port"][..]),
+        ] {
+            match runner.run("fail2ban-client", args) {
+                Ok(output) if output.status == 0 => {
+                    let text = output.stdout.trim();
+                    let value = if key == "port" {
+                        text.parse::<u16>().ok().map(|port| json!(port))
+                    } else {
+                        text.split_whitespace()
+                            .last()
+                            .and_then(|part| part.parse::<u32>().ok())
+                            .map(|n| json!(n))
+                    };
+                    if let Some(value) = value {
+                        effective.insert(key.to_owned(), value);
+                    } else {
+                        let message = format!(
+                            "fail2ban-client {} returned malformed value {text:?}",
+                            args.join(" ")
+                        );
+                        observed.facts.insert(
+                            "fail2ban.effective".to_owned(),
+                            InspectionStatus::Error {
+                                message: message.clone(),
+                            },
+                        );
+                        if managed {
+                            *incomplete = true;
+                        }
+                    }
+                }
+                Ok(output) => {
+                    let message = format!(
+                        "fail2ban-client {} exited {}: {}",
+                        args.join(" "),
+                        output.status,
+                        output.stderr.trim()
+                    );
+                    observed.facts.insert(
+                        "fail2ban.effective".to_owned(),
+                        InspectionStatus::Error {
+                            message: message.clone(),
+                        },
+                    );
+                    if managed {
+                        *incomplete = true;
+                    }
+                }
+                Err(error) => {
+                    let message = format!(
+                        "cannot inspect fail2ban effective {}: {error}",
+                        args.join(" ")
+                    );
+                    observed.facts.insert(
+                        "fail2ban.effective".to_owned(),
+                        InspectionStatus::Error {
+                            message: message.clone(),
+                        },
+                    );
+                    if managed {
+                        *incomplete = true;
+                    }
+                }
+            }
+        }
+    }
+    if !matches!(
+        observed.facts.get("fail2ban.effective"),
+        Some(InspectionStatus::Error { .. })
+    ) {
+        observed.facts.insert(
+            "fail2ban.effective".to_owned(),
+            InspectionStatus::Available(Value::Object(effective.clone())),
+        );
+    }
+
+    if kind != ReportKind::Doctor {
+        return;
+    }
+    match policy {
+        None => diagnostics.push(diag(
+            "security/fail2ban",
+            DiagnosticSeverity::Warn,
+            "fail2ban policy is unmanaged",
+            vec![],
+            None,
+        )),
+        Some(Fail2banConfig { enabled: false, .. }) => diagnostics.push(diag(
+            "security/fail2ban",
+            DiagnosticSeverity::Warn,
+            "disabling fail2ban is not an automatic remediation; review service shutdown manually",
+            vec![],
+            None,
+        )),
+        Some(policy) => {
+            let active = matches!(observed.facts.get("service.fail2ban"), Some(InspectionStatus::Available(value)) if value["active"] == true);
+            let enabled = matches!(observed.facts.get("service.fail2ban.enabled"), Some(InspectionStatus::Available(value)) if value["enabled"] == true);
+            let service_ok = active && enabled;
+            let active_known = matches!(
+                observed.facts.get("service.fail2ban"),
+                Some(InspectionStatus::Available(value)) if value.get("active").and_then(Value::as_bool).is_some()
+            );
+            let disabled_state = matches!(
+                observed.facts.get("service.fail2ban.enabled"),
+                Some(InspectionStatus::Available(value)) if value["state"] == "disabled"
+            );
+            let service_repairable = active_known && (disabled_state || enabled);
+            diagnostics.push(diag(
+                "service/fail2ban",
+                if service_ok {
+                    DiagnosticSeverity::Pass
+                } else {
+                    DiagnosticSeverity::Warn
+                },
+                if service_ok {
+                    "fail2ban service active and enabled"
+                } else if service_repairable {
+                    "fail2ban service inactive or disabled"
+                } else {
+                    "fail2ban service state requires manual review"
+                },
+                vec![],
+                (service_repairable && !service_ok).then(|| "security/fail2ban".to_owned()),
+            ));
+
+            if !policy.sshd.enabled {
+                diagnostics.push(diag(
+                    "security/fail2ban-policy",
+                    DiagnosticSeverity::Warn,
+                    "disabling the sshd jail is not an automatic remediation; review manually",
+                    vec![],
+                    None,
+                ));
+                return;
+            }
+            let ssh_port = policy_ssh_port(desired, observed);
+            let ssh_port_known = ssh_port.is_some();
+            if !ssh_port_known {
+                *incomplete = true;
+            }
+            let values = observed
+                .facts
+                .get("fail2ban.effective")
+                .and_then(|state| match state {
+                    InspectionStatus::Available(value) => Some(value),
+                    _ => None,
+                });
+            let desired_matches = ssh_port.is_some_and(|port| {
+                jail == Some(true)
+                    && values.is_some_and(|value| {
+                        value["maxretry"] == policy.sshd.maxretry
+                            && value["bantime"] == policy.sshd.bantime
+                            && value["port"] == port
+                    })
+            });
+            let evidence = if ssh_port.is_none() {
+                vec![
+                    "SSH port is unknown or ambiguous; cannot safely bind the fail2ban jail"
+                        .to_owned(),
+                ]
+            } else if values.is_none() && jail == Some(true) {
+                vec!["effective fail2ban sshd jail values could not be inspected".to_owned()]
+            } else {
+                vec![format!(
+                    "observed_jail_enabled={}; effective_maxretry={:?}; desired_maxretry={}; effective_bantime={:?}; desired_bantime={}; effective_port={:?}; desired_ssh_port={:?}; if effective values remain mismatched after reconciliation, review later-loaded administrator jail overrides manually",
+                    jail == Some(true),
+                    values.and_then(|value| value.get("maxretry")),
+                    policy.sshd.maxretry,
+                    values.and_then(|value| value.get("bantime")),
+                    policy.sshd.bantime,
+                    values.and_then(|value| value.get("port")),
+                    ssh_port
+                )]
+            };
+            observed.facts.insert(
+                "fail2ban.policy".to_owned(),
+                InspectionStatus::Available(
+                    json!({"compliant": desired_matches, "ssh_port": ssh_port}),
+                ),
+            );
+            let mut diagnostic = diag(
+                "security/fail2ban-policy",
+                if !ssh_port_known {
+                    DiagnosticSeverity::Warn
+                } else if desired_matches {
+                    DiagnosticSeverity::Pass
+                } else {
+                    DiagnosticSeverity::Fail
+                },
+                if !ssh_port_known {
+                    "effective SSH port is unknown; fail2ban policy cannot be safely compared"
+                } else if desired_matches {
+                    "fail2ban sshd policy matches desired configuration"
+                } else {
+                    "fail2ban sshd policy differs from desired configuration"
+                },
+                evidence,
+                (ssh_port_known && !desired_matches).then(|| "security/fail2ban-policy".to_owned()),
+            );
+            if ssh_port_known && !desired_matches {
+                diagnostic.risk = Some(RiskClass::Access);
+                diagnostic.confirmation_required = true;
+            }
+            diagnostics.push(diagnostic);
+        }
+    }
+}
+
+fn missing_fail2ban_jail(stdout: &str, stderr: &str) -> bool {
+    let output = format!("{stdout}\n{stderr}").to_ascii_lowercase();
+    output.contains("jail 'sshd' does not exist")
+        || output.contains("jail \"sshd\" does not exist")
+        || output.contains("jail sshd not found")
+}
+
+fn policy_ssh_port(
+    desired: Option<&mistborn_bootstrap::config::DesiredState>,
+    observed: &ObservedState,
+) -> Option<u16> {
+    if let Some(port) = desired
+        .and_then(|state| state.ssh.as_ref())
+        .map(|ssh| ssh.port.get())
+    {
+        return Some(port);
+    }
+    let ports = observed
+        .facts
+        .get("ssh.policy")
+        .and_then(|state| match state {
+            InspectionStatus::Available(value) => value["ports"].as_array(),
+            _ => None,
+        })?;
+    (ports.len() == 1)
+        .then(|| ports[0].as_u64().and_then(|port| u16::try_from(port).ok()))
+        .flatten()
 }
 
 fn inspect_ufw(
@@ -2423,6 +2798,221 @@ mod tests {
             plan.remediations[0].id.to_string(),
             "packages/fail2ban-client"
         );
+    }
+
+    #[test]
+    fn managed_fail2ban_compares_effective_thresholds_and_nonstandard_ssh_port() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=2222\npassword_authentication=false\nroot_login=false\n[fail2ban]\nenabled=true\n[fail2ban.sshd]\nenabled=true\nmaxretry=3\nbantime=3600\n",
+        ).unwrap();
+        let runner = FixtureRunner(HashMap::from([
+            (
+                "systemctl is-enabled fail2ban".into(),
+                output("enabled\n", 0),
+            ),
+            (
+                "fail2ban-client status sshd".into(),
+                output("Status for the jail: sshd\n", 0),
+            ),
+            ("fail2ban-client get sshd maxretry".into(), output("3\n", 0)),
+            (
+                "fail2ban-client get sshd bantime".into(),
+                output("3600\n", 0),
+            ),
+            ("fail2ban-client get sshd port".into(), output("2222\n", 0)),
+        ]));
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(json!({"active": true})),
+        );
+        observed.facts.insert(
+            "ssh.policy".into(),
+            InspectionStatus::Available(json!({"ports": [2222]})),
+        );
+        let mut diagnostics = Vec::new();
+        let mut incomplete = false;
+        inspect_fail2ban(
+            &runner,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics,
+            &mut incomplete,
+        );
+        assert!(!incomplete);
+        let policy = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "security/fail2ban-policy")
+            .unwrap();
+        assert_eq!(policy.severity, DiagnosticSeverity::Pass);
+        assert!(!policy.confirmation_required);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.id == "service/fail2ban"
+                    && item.severity == DiagnosticSeverity::Pass)
+        );
+    }
+
+    #[test]
+    fn fail2ban_unknown_effective_ssh_port_is_never_passed() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[fail2ban]\nenabled=true\n[fail2ban.sshd]\nenabled=true\nmaxretry=3\nbantime=3600\n",
+        ).unwrap();
+        let runner = FixtureRunner(HashMap::from([
+            (
+                "systemctl is-enabled fail2ban".into(),
+                output("enabled\n", 0),
+            ),
+            (
+                "fail2ban-client status sshd".into(),
+                output("Status for the jail: sshd\n", 0),
+            ),
+            ("fail2ban-client get sshd maxretry".into(), output("3\n", 0)),
+            (
+                "fail2ban-client get sshd bantime".into(),
+                output("3600\n", 0),
+            ),
+            ("fail2ban-client get sshd port".into(), output("22\n", 0)),
+        ]));
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(json!({"active": true})),
+        );
+        let mut diagnostics = Vec::new();
+        let mut incomplete = false;
+        inspect_fail2ban(
+            &runner,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics,
+            &mut incomplete,
+        );
+        let policy = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == "security/fail2ban-policy")
+            .unwrap();
+        assert_eq!(policy.severity, DiagnosticSeverity::Warn);
+        assert!(!policy.confirmation_required);
+        assert_eq!(policy.remediation_id, None);
+        assert!(incomplete);
+        assert!(policy.evidence[0].contains("unknown or ambiguous"));
+    }
+
+    #[test]
+    fn inactive_fail2ban_service_is_planable_without_misreading_socket_errors_as_incomplete() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=2222\npassword_authentication=false\nroot_login=false\n[fail2ban]\nenabled=true\n[fail2ban.sshd]\nenabled=true\nmaxretry=3\nbantime=3600\n",
+        ).unwrap();
+        let runner = FixtureRunner(HashMap::from([
+            (
+                "systemctl is-enabled fail2ban".into(),
+                output("disabled\n", 1),
+            ),
+            (
+                "fail2ban-client status sshd".into(),
+                Ok(CommandOutput {
+                    status: 1,
+                    stdout: String::new(),
+                    stderr: "Cannot connect to fail2ban socket".into(),
+                }),
+            ),
+        ]));
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(json!({"active": false})),
+        );
+        observed.facts.insert(
+            "package.fail2ban-client".into(),
+            InspectionStatus::Available(json!({"installed": true})),
+        );
+        let mut diagnostics = Vec::new();
+        let mut incomplete = false;
+        inspect_fail2ban(
+            &runner,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics,
+            &mut incomplete,
+        );
+        assert!(!incomplete);
+        assert!(diagnostics.iter().any(|item| item.id == "service/fail2ban"
+            && item.remediation_id.as_deref() == Some("security/fail2ban")));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.id == "security/fail2ban-policy"
+                    && item.remediation_id.as_deref() == Some("security/fail2ban-policy"))
+        );
+        let plan = mistborn_bootstrap::reconciliation::plan(
+            &serde_json::json!({}),
+            &diagnostics,
+            Some("security/fail2ban-policy".parse().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.remediations
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["security/fail2ban", "security/fail2ban-policy"]
+        );
+    }
+
+    #[test]
+    fn masked_fail2ban_service_is_manual_review_not_low_risk_repair() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=22\npassword_authentication=false\nroot_login=false\n[fail2ban]\nenabled=true\n[fail2ban.sshd]\nenabled=true\nmaxretry=3\nbantime=3600\n",
+        ).unwrap();
+        let runner = FixtureRunner(HashMap::from([
+            (
+                "systemctl is-enabled fail2ban".into(),
+                output("masked\n", 1),
+            ),
+            (
+                "fail2ban-client status sshd".into(),
+                Ok(CommandOutput {
+                    status: 1,
+                    stdout: String::new(),
+                    stderr: "Cannot connect to fail2ban socket".into(),
+                }),
+            ),
+        ]));
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "service.fail2ban".into(),
+            InspectionStatus::Available(json!({"active": false})),
+        );
+        observed.facts.insert(
+            "package.fail2ban-client".into(),
+            InspectionStatus::Available(json!({"installed": true})),
+        );
+        let mut diagnostics = Vec::new();
+        let mut incomplete = false;
+        inspect_fail2ban(
+            &runner,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics,
+            &mut incomplete,
+        );
+        let service = diagnostics
+            .iter()
+            .find(|item| item.id == "service/fail2ban")
+            .unwrap();
+        assert!(service.remediation_id.is_none());
+        assert!(service.summary.contains("manual review"));
+        assert!(incomplete);
+        assert!(matches!(
+            observed.facts.get("service.fail2ban.enabled"),
+            Some(InspectionStatus::Error { .. })
+        ));
     }
 
     #[test]

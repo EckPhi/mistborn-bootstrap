@@ -95,6 +95,14 @@ tailscale = true
 ssh = true
 advertise_exit_node = false
 auto_update = true
+
+[fail2ban]
+enabled = true
+
+[fail2ban.sshd]
+enabled = true
+maxretry = 3
+bantime = 3600 # seconds
 ```
 
 All fields are typed and validated before inspection or mutation. Unknown keys
@@ -274,8 +282,9 @@ verification delivered together:
    rules. This proves targeted reconciliation with `security/plex-firewall`.
 2. **Tailscale**: inspect and reconcile SSH, exit-node advertisement, and
    auto-update separately. Treat connectivity-affecting changes as Access risk.
-3. **fail2ban**: package, service enablement, and sshd jail health. Eligible
-   low-risk actions may be added to the `--safe` allowlist after tests.
+3. **fail2ban**: package and inactive-service repair may be low-risk. Applying
+   or changing sshd ban policy is confirmation-gated because bans can interrupt
+   access. Use an owned `jail.d/*.local` drop-in and verify effective values.
 4. **SSH**: render a Mistborn-owned drop-in, validate with `sshd -t`, preserve
    the active session, and require explicit confirmation before reload. This is
    deliberately after the reconciliation framework has proven itself.

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCommand, shellQuote, summarize, validate } from "../site/app.mjs";
+import { buildCommand, selectionFromURL, selectionToSearch, shellQuote, summarize, validate } from "../site/app.mjs";
 
 const defaults = {
   collection: "server", downloader: "curl", release: "v0.5.6", user: "", yes: false,
   tailscaleSsh: false, exitNode: false, tailscaleAutoUpdate: false, rclone: false, harden: false, sshPort: 22,
+  fail2banMaxretry: 3, fail2banBantime: 3600,
   tcpPorts: [], disablePassword: true, tailscaleOnly: false,
   plexUfw: false, plexTailscale: false, plexLanCidr: "",
 };
@@ -18,10 +19,18 @@ test("uses the versioned release installer when CI publishes one", () => {
   assert.equal(buildCommand(config, true), "curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/download/v0.5.7/install.sh | sudo bash -s -- server");
 });
 
+test("round-trips fail2ban installer inputs through the shareable URL", () => {
+  const config = { ...defaults, harden: true, fail2banMaxretry: 5, fail2banBantime: 86400 };
+  const restored = selectionFromURL(`?${selectionToSearch(config)}`, ["v0.5.6"]);
+  assert.equal(restored.fail2banMaxretry, 5);
+  assert.equal(restored.fail2banBantime, 86400);
+});
+
 test("adds supported server configuration with safe quoting", () => {
   const config = { ...defaults, user: "phil", yes: true, tailscaleSsh: true, tailscaleAutoUpdate: true, harden: true, sshPort: 2222, tcpPorts: [80, 443], tailscaleOnly: true };
-  assert.equal(buildCommand(config), "curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh | sudo env MISTBORN_TAILSCALE_SSH=1 MISTBORN_TAILSCALE_AUTO_UPDATE=1 MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=2222 MISTBORN_TAILSCALE_ONLY=1 MISTBORN_ALLOWED_TCP_PORTS='80 443' bash -s -- server --yes --user phil");
+  assert.equal(buildCommand(config), "curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh | sudo env MISTBORN_TAILSCALE_SSH=1 MISTBORN_TAILSCALE_AUTO_UPDATE=1 MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=2222 MISTBORN_FAIL2BAN_MAXRETRY=3 MISTBORN_FAIL2BAN_BANTIME=3600 MISTBORN_TAILSCALE_ONLY=1 MISTBORN_ALLOWED_TCP_PORTS='80 443' bash -s -- server --yes --user phil");
   assert.ok(summarize(config).some(item => item.includes("port 2222")));
+  assert.ok(summarize(config).includes("Fail2ban bans SSH after 3 failed attempts for 3600 seconds"));
   assert.ok(summarize(config).includes("Automatically install Tailscale updates"));
 });
 
@@ -46,9 +55,9 @@ test("keeps pre-launcher releases on their bundled shell scripts", () => {
   assert.equal(command, "curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.4.0/dist/server.sh | sudo bash -s -- --yes");
 });
 
-test("validates usernames and every configured port", () => {
-  assert.deepEqual(validate({ ...defaults, user: "bad user", harden: true, sshPort: 0, tcpPorts: [443, 70000] }), [
-    "Enter a valid Linux username.", "SSH port must be between 1 and 65535.", "Additional TCP ports must be numbers between 1 and 65535.",
+test("validates usernames, ports, and fail2ban thresholds", () => {
+  assert.deepEqual(validate({ ...defaults, user: "bad user", harden: true, sshPort: 0, fail2banMaxretry: 0, fail2banBantime: 0, tcpPorts: [443, 70000] }), [
+    "Enter a valid Linux username.", "SSH port must be between 1 and 65535.", "Fail2ban max retries must be a positive whole number.", "Fail2ban ban duration must be a positive whole number of seconds.", "Additional TCP ports must be numbers between 1 and 65535.",
   ]);
   assert.equal(shellQuote("80 443"), "'80 443'");
   assert.deepEqual(validate({ ...defaults, harden: true, plexUfw: true, plexLanCidr: "192.168.1.999/99" }), [

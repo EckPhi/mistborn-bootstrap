@@ -21,3 +21,11 @@ tailscale = true
 ssh = true
 advertise_exit_node = false
 auto_update = true
+
+[fail2ban]
+enabled = true
+
+[fail2ban.sshd]
+enabled = true
+maxretry = 3
+bantime = 3600 # seconds

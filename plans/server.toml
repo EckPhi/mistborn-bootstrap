@@ -127,7 +127,7 @@ id = "ssh"
 title = "Configure and validate SSH"
 action = "configure sshd and sshd -t"
 weight = 2
-inputs = ["MISTBORN_HARDEN", "MISTBORN_SSH_PORT", "MISTBORN_DISABLE_PASSWORD_AUTH", "MISTBORN_FORCE_SSH"]
+inputs = ["MISTBORN_HARDEN", "MISTBORN_SSH_PORT", "MISTBORN_DISABLE_PASSWORD_AUTH", "MISTBORN_FORCE_SSH", "MISTBORN_FAIL2BAN_MAXRETRY", "MISTBORN_FAIL2BAN_BANTIME"]
 requires_confirmation = true
 [[stages.tasks]]
 id = "firewall"
@@ -149,6 +149,7 @@ id = "fail2ban"
 title = "Enable fail2ban"
 action = "systemctl enable --now fail2ban"
 weight = 1
+inputs = ["MISTBORN_HARDEN", "MISTBORN_FAIL2BAN_MAXRETRY", "MISTBORN_FAIL2BAN_BANTIME"]
 [[stages.tasks]]
 id = "tailscale-only"
 title = "Apply Tailscale-only SSH rules"

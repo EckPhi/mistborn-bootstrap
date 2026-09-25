@@ -19,7 +19,7 @@ fi
 [[ -x "$validator" ]]
 
 fresh="$fixture/fresh"
-export MISTBORN_CONFIG_ADOPTION_ALLOWED=1 MISTBORN_CONFIG_APPLIED_TASKS='security/ssh,security/firewall,security/plex-firewall,tailscale/connect'
+export MISTBORN_CONFIG_ADOPTION_ALLOWED=1 MISTBORN_CONFIG_APPLIED_TASKS='security/ssh,security/firewall,security/plex-firewall,security/fail2ban,tailscale/connect'
 export MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=2222 MISTBORN_ALLOWED_TCP_PORTS='80 443'
 export MISTBORN_PLEX_UFW=1 MISTBORN_PLEX_LAN_CIDR='192.168.50.0/24' MISTBORN_PLEX_TAILSCALE=1
 export MISTBORN_TAILSCALE_SSH=1 MISTBORN_TAILSCALE_EXIT_NODE=0 MISTBORN_TAILSCALE_AUTO_UPDATE=1
@@ -29,6 +29,8 @@ grep -Fq 'port = 2222' "$fresh_config"
 grep -Fq 'public_tcp_ports = [80, 443]' "$fresh_config"
 grep -Fq 'lan_cidr = "192.168.50.0/24"' "$fresh_config"
 grep -Fq 'ssh = true' "$fresh_config"
+grep -Fq '[fail2ban.sshd]' "$fresh_config"
+grep -Fq 'maxretry = 3' "$fresh_config"
 [[ -f "$fresh/share/mistborn/config.toml.example" ]]
 mode="$(stat -f '%Lp' "$fresh_config" 2>/dev/null || stat -c '%a' "$fresh_config")"
 owner="$(stat -f '%u:%g' "$fresh_config" 2>/dev/null || stat -c '%u:%g' "$fresh_config")"
@@ -54,6 +56,10 @@ mistborn_publish_desired_config "$partial/etc/mistborn" "$partial/share/mistborn
 grep -Fq '[ssh]' "$partial/etc/mistborn/config.toml"
 if grep -Fq '[firewall]' "$partial/etc/mistborn/config.toml"; then
   printf 'unapplied firewall task was adopted\n' >&2
+  exit 1
+fi
+if grep -Fq '[fail2ban]' "$partial/etc/mistborn/config.toml"; then
+  printf 'fail2ban policy was adopted without its completed task\n' >&2
   exit 1
 fi
 

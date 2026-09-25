@@ -23,7 +23,7 @@ struct Definition {
     available: bool,
 }
 
-const REGISTRY: [Definition; 11] = [
+const REGISTRY: [Definition; 12] = [
     Definition {
         id: RemediationId::SecurityUfw,
         risk: RiskClass::Access,
@@ -43,6 +43,13 @@ const REGISTRY: [Definition; 11] = [
         risk: RiskClass::Low,
         confirmation: ConfirmationPolicy::None,
         dependency: Some(RemediationId::PackagesFail2banClient),
+        available: true,
+    },
+    Definition {
+        id: RemediationId::SecurityFail2banPolicy,
+        risk: RiskClass::Access,
+        confirmation: ConfirmationPolicy::Explicit,
+        dependency: Some(RemediationId::SecurityFail2ban),
         available: true,
     },
     Definition {
@@ -128,6 +135,9 @@ fn action_for(id: RemediationId) -> ActionKind {
         RemediationId::SecurityFail2ban => ActionKind::EnableService {
             service: ServiceName::Fail2ban,
         },
+        RemediationId::SecurityFail2banPolicy => {
+            ActionKind::ApplyBoundedRemediation { remediation: id }
+        }
         other => ActionKind::ApplyBoundedRemediation { remediation: other },
     }
 }
@@ -260,6 +270,7 @@ fn action_description(id: RemediationId) -> String {
         RemediationId::PackagesUfw => "install the UFW package".into(),
         RemediationId::PackagesFail2banClient => "install fail2ban".into(),
         RemediationId::SecurityFail2ban => "enable fail2ban service".into(),
+        RemediationId::SecurityFail2banPolicy => "configure the managed fail2ban sshd jail".into(),
         RemediationId::SecurityTailscaleSsh => "set Tailscale SSH preference".into(),
         RemediationId::SecurityTailscaleExitNode => {
             "set Tailscale exit-node advertisement preference".into()
@@ -779,6 +790,20 @@ mod tests {
             RemediationId::SecuritySsh,
             &approved
         ));
+    }
+
+    #[test]
+    fn fail2ban_policy_is_confirmation_gated_and_never_safe_allowlisted() {
+        let id = RemediationId::SecurityFail2banPolicy;
+        assert_eq!(definition(id).risk, RiskClass::Access);
+        assert_eq!(definition(id).confirmation, ConfirmationPolicy::Explicit);
+        assert!(!safe_allowlisted(id));
+        let diagnostics = vec![drift(id.as_str(), DiagnosticSeverity::Fail)];
+        let plan = plan(&serde_json::json!({}), &diagnostics, Some(id)).unwrap();
+        assert_eq!(plan.remediations[0].id, id.as_str());
+        assert!(
+            matches!(plan.remediations[0].actions[0].kind, ActionKind::ApplyBoundedRemediation { remediation } if remediation == id)
+        );
     }
 
     #[test]

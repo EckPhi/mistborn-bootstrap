@@ -75,6 +75,7 @@ pub enum RemediationId {
     SecurityUfw,
     SecurityPlexFirewall,
     SecurityFail2ban,
+    SecurityFail2banPolicy,
     SecuritySsh,
     SecurityTailscaleSsh,
     SecurityTailscaleExitNode,
@@ -86,10 +87,11 @@ pub enum RemediationId {
 }
 
 impl RemediationId {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::SecurityUfw,
         Self::SecurityPlexFirewall,
         Self::SecurityFail2ban,
+        Self::SecurityFail2banPolicy,
         Self::SecuritySsh,
         Self::SecurityTailscaleSsh,
         Self::SecurityTailscaleExitNode,
@@ -105,6 +107,7 @@ impl RemediationId {
             Self::SecurityUfw => "security/ufw",
             Self::SecurityPlexFirewall => "security/plex-firewall",
             Self::SecurityFail2ban => "security/fail2ban",
+            Self::SecurityFail2banPolicy => "security/fail2ban-policy",
             Self::SecuritySsh => "security/ssh",
             Self::SecurityTailscaleSsh => "security/tailscale-ssh",
             Self::SecurityTailscaleExitNode => "security/tailscale-exit-node",

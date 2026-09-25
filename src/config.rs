@@ -17,6 +17,8 @@ pub struct DesiredState {
     pub firewall: Option<FirewallConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tailscale: Option<TailscaleConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fail2ban: Option<Fail2banConfig>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +70,22 @@ pub struct TailscaleConfig {
     pub ssh: bool,
     pub advertise_exit_node: bool,
     pub auto_update: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fail2banConfig {
+    pub enabled: bool,
+    pub sshd: Fail2banSshdConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fail2banSshdConfig {
+    pub enabled: bool,
+    pub maxretry: u32,
+    /// Ban duration in seconds.
+    pub bantime: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -132,6 +150,7 @@ impl<'de> Deserialize<'de> for Ipv4Cidr {
 pub enum ConfigError {
     Read(std::io::Error),
     Parse(toml::de::Error),
+    Invalid(String),
     UnsupportedVersion(u8),
 }
 
@@ -140,6 +159,7 @@ impl fmt::Display for ConfigError {
         match self {
             Self::Read(error) => write!(formatter, "cannot read configuration: {error}"),
             Self::Parse(error) => write!(formatter, "invalid configuration: {error}"),
+            Self::Invalid(message) => write!(formatter, "invalid configuration: {message}"),
             Self::UnsupportedVersion(version) => write!(
                 formatter,
                 "unsupported configuration version {version}; expected {CONFIG_VERSION}"
@@ -155,6 +175,15 @@ impl DesiredState {
         let config: Self = toml::from_str(contents).map_err(ConfigError::Parse)?;
         if config.version != CONFIG_VERSION {
             return Err(ConfigError::UnsupportedVersion(config.version));
+        }
+        if config
+            .fail2ban
+            .as_ref()
+            .is_some_and(|policy| policy.sshd.maxretry == 0 || policy.sshd.bantime == 0)
+        {
+            return Err(ConfigError::Invalid(
+                "fail2ban sshd maxretry and bantime must be greater than zero".to_owned(),
+            ));
         }
         Ok(config)
     }
@@ -185,7 +214,12 @@ mod tests {
     #[test]
     fn omitted_sections_are_unmanaged() {
         let desired = DesiredState::from_toml("version = 1\nprofile = \"vps\"\n").unwrap();
-        assert!(desired.ssh.is_none() && desired.firewall.is_none() && desired.tailscale.is_none());
+        assert!(
+            desired.ssh.is_none()
+                && desired.firewall.is_none()
+                && desired.tailscale.is_none()
+                && desired.fail2ban.is_none()
+        );
     }
 
     #[test]
@@ -204,6 +238,16 @@ mod tests {
                 DesiredState::from_toml(&input).is_err(),
                 "accepted port {port}"
             );
+        }
+    }
+
+    #[test]
+    fn rejects_zero_fail2ban_thresholds() {
+        for (maxretry, bantime) in [(0, 3600), (3, 0)] {
+            let input = format!(
+                "version = 1\nprofile = \"vps\"\n[fail2ban]\nenabled = true\n[fail2ban.sshd]\nenabled = true\nmaxretry = {maxretry}\nbantime = {bantime}\n"
+            );
+            assert!(DesiredState::from_toml(&input).is_err());
         }
     }
 
