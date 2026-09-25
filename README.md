@@ -9,10 +9,18 @@ Security hardening is included but deliberately opt-in.
 
 ## Install
 
-Review the script, then run the pinned release:
+Run the installer from the latest published release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh | sudo bash -s -- server
+curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/latest/download/install.sh | sudo bash -s -- server
+```
+
+To pin a specific payload version, fetch that tag's installer and set
+`MISTBORN_VERSION`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh \
+  | sudo env MISTBORN_VERSION=v0.5.6 bash -s -- server
 ```
 
 The launcher downloads the CI-built binary for x86-64 or ARM64, verifies its
@@ -21,14 +29,14 @@ For unattended Tailscale
 enrollment, provide a [pre-authentication key](https://tailscale.com/kb/1085/auth-keys):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh \
+curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/latest/download/install.sh \
   | sudo env TAILSCALE_AUTH_KEY='tskey-auth-...' bash -s -- server
 ```
 
 Pass the collection first, followed by `--dry-run`, `--yes`, or `--user NAME`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh | sudo bash -s -- server --dry-run --user phil
+curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/latest/download/install.sh | sudo bash -s -- server --dry-run --user phil
 ```
 
 ## Development
@@ -43,8 +51,10 @@ sudo ./dist/server.sh --dry-run --yes --user "$USER"
 
 Generated files in `dist/` are committed so release URLs remain simple and
 auditable. CI rebuilds them and fails when the checked-in output has drifted.
-Release tags compile static Linux binaries for x86-64 and ARM64 in GitHub
-Actions, publish SHA-256 checksums, and create the GitHub release. Rust is not
+Release tags set the Cargo version from the tag, compile static Linux binaries
+for x86-64 and ARM64 in GitHub Actions, and publish a version-matched installer
+with SHA-256 checksums. The Pages release picker is generated from published
+GitHub releases. Version files need no manual bump commit, and Rust is not
 required on the target server.
 
 ## Resumable runner
@@ -111,11 +121,11 @@ updates Runtipi core, app stores, and apps with snapshots.
 
 `sudo mistborn update` is retained as an alias for `upgrade`. Hosts installed
 with v0.5.1 or earlier need a one-time installer rerun before the new command
-is available: `curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh | sudo bash -s -- server --yes`.
+is available: `curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/latest/download/install.sh | sudo bash -s -- server --yes`.
 
 Enable hardening only after confirming key-based SSH access:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap/v0.5.6/install.sh \
+curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/latest/download/install.sh \
   | sudo env MISTBORN_HARDEN=1 MISTBORN_SSH_PORT=22 bash -s -- server
 ```

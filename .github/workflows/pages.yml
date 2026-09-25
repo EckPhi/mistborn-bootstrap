@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
     paths: [site/**, .github/workflows/pages.yml]
+  release:
+    types: [published]
+  workflow_run:
+    workflows: [Release binaries]
+    types: [completed]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,12 +18,26 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Generate release catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | {tag: .tag_name, installer: ([.assets[].name] | contains(["install.sh"]))}' > /tmp/mistborn-releases.jsonl
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const releases = fs.readFileSync("/tmp/mistborn-releases.jsonl", "utf8")
+              .trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+            const unique = [...new Map(releases.filter(release => /^v\d+\.\d+\.\d+$/.test(release.tag)).map(release => [release.tag, release])).values()];
+            unique.sort((a, b) => b.tag.localeCompare(a.tag, undefined, { numeric: true }));
+            fs.writeFileSync("site/releases.json", `${JSON.stringify(unique, null, 2)}\n`);
+          '
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

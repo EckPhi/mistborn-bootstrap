@@ -17,6 +17,8 @@ jobs:
         run: cargo test --locked
       - name: Test installer generator
         run: node --test tests/site.test.mjs
+      - name: Test release versioning
+        run: bash tests/versioning.sh
       - name: Test generated module options
         run: bash tests/generated.sh
       - name: Check generated scripts

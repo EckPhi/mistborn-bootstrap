@@ -1,4 +1,5 @@
 const repository = "https://raw.githubusercontent.com/EckPhi/mistborn-bootstrap";
+const releaseInstallers = new Set();
 const selectionFields = {
   collection: ["collection", "select"],
   downloader: ["downloader", "select"],
@@ -64,11 +65,13 @@ export function validate(config) {
   return errors;
 }
 
-export function buildCommand(config) {
+export function buildCommand(config, releaseInstallerAvailable = false) {
   const version = /^v(\d+)\.(\d+)/.exec(config.release);
   const usesLauncher = version && (Number(version[1]) > 0 || Number(version[2]) >= 5);
   const source = usesLauncher ? "install.sh" : `dist/${config.collection}.sh`;
-  const url = `${repository}/${config.release}/${source}`;
+  const url = releaseInstallerAvailable
+    ? `https://github.com/EckPhi/mistborn-bootstrap/releases/download/${config.release}/install.sh`
+    : `${repository}/${config.release}/${source}`;
   const download = config.downloader === "wget" ? `wget -qO- ${url}` : `curl -fsSL ${url}`;
   const environment = [];
   const arguments_ = usesLauncher ? [config.collection] : [];
@@ -137,7 +140,7 @@ function render() {
   document.querySelector("#server-options").hidden = !server;
   document.querySelector("#hardening-options").hidden = !server || !config.harden;
   const errors = validate(config);
-  document.querySelector("#command").textContent = errors.length ? "Fix the highlighted configuration to generate a command." : buildCommand(config);
+  document.querySelector("#command").textContent = errors.length ? "Fix the highlighted configuration to generate a command." : buildCommand(config, releaseInstallers.has(config.release));
   document.querySelector("#error").textContent = errors.join(" ");
   document.querySelector("#copy").disabled = errors.length > 0;
   document.querySelector("#summary").replaceChildren(...summarize(config).map(item => Object.assign(document.createElement("li"), { textContent: item })));
@@ -147,20 +150,41 @@ function render() {
 }
 
 if (typeof document !== "undefined") {
-  const releases = [...document.querySelector("#release").options].map(option => option.value);
-  const initial = selectionFromURL(location.search, releases);
-  for (const [key, [id, type]] of Object.entries(selectionFields)) {
-    const input = document.querySelector(`#${id}`);
-    if (type === "checkbox") input.checked = initial[key];
-    else if (key === "tcpPorts") input.value = initial.tcpPortsText;
-    else input.value = String(initial[key]);
-  }
-  document.querySelector("#config").addEventListener("input", render);
-  document.querySelector("#config").addEventListener("change", render);
-  document.querySelector("#copy").addEventListener("click", async event => {
-    await navigator.clipboard.writeText(document.querySelector("#command").textContent);
-    event.currentTarget.textContent = "Copied";
-    setTimeout(() => { event.currentTarget.textContent = "Copy install command"; }, 1200);
-  });
-  render();
+  const releaseSelect = document.querySelector("#release");
+  const initialize = async () => {
+    try {
+      const response = await fetch("./releases.json", { cache: "no-cache" });
+      if (response.ok) {
+        const catalog = await response.json();
+        if (Array.isArray(catalog) && catalog.length) {
+          releaseSelect.replaceChildren(...catalog.map(release => {
+            if (release.installer) releaseInstallers.add(release.tag);
+            return Object.assign(document.createElement("option"), {
+              value: release.tag,
+              textContent: release.tag,
+            });
+          }));
+        }
+      }
+    } catch {
+      // Keep the checked-in release list as a usable offline fallback.
+    }
+    const releases = [...releaseSelect.options].map(option => option.value);
+    const initial = selectionFromURL(location.search, releases);
+    for (const [key, [id, type]] of Object.entries(selectionFields)) {
+      const input = document.querySelector(`#${id}`);
+      if (type === "checkbox") input.checked = initial[key];
+      else if (key === "tcpPorts") input.value = initial.tcpPortsText;
+      else input.value = String(initial[key]);
+    }
+    document.querySelector("#config").addEventListener("input", render);
+    document.querySelector("#config").addEventListener("change", render);
+    document.querySelector("#copy").addEventListener("click", async event => {
+      await navigator.clipboard.writeText(document.querySelector("#command").textContent);
+      event.currentTarget.textContent = "Copied";
+      setTimeout(() => { event.currentTarget.textContent = "Copy install command"; }, 1200);
+    });
+    render();
+  };
+  initialize();
 }

@@ -35,6 +35,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Set package version from release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python3 tools/set-version.py "${GITHUB_REF_NAME#v}"
       - name: Test runner
         run: cargo test --locked
       - name: Build release binary
@@ -43,6 +46,10 @@ jobs:
         run: |
           mkdir artifacts
           cp "target/${{ matrix.target }}/release/mistborn-bootstrap" "artifacts/mistborn-bootstrap-linux-${{ matrix.arch }}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            sed -E "s/(MISTBORN_DEFAULT_VERSION=\")v[0-9]+\.[0-9]+\.[0-9]+/\1${GITHUB_REF_NAME}/" install.sh > artifacts/install.sh
+            grep -Fq "MISTBORN_DEFAULT_VERSION=\"${GITHUB_REF_NAME}\"" artifacts/install.sh
+          fi
           file "artifacts/mistborn-bootstrap-linux-${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
