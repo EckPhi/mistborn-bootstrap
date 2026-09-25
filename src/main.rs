@@ -4,6 +4,7 @@ mod host_diagnostics;
 mod input;
 mod plan;
 mod progress;
+mod ssh_adapter;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -1167,6 +1168,17 @@ fn apply_security_remediation(
         RemediationId::SecurityUfw => apply_ufw_policy(&desired),
         RemediationId::SecurityPlexFirewall => apply_plex_firewall(&desired),
         RemediationId::SecurityFail2banPolicy => apply_fail2ban_policy(&desired),
+        RemediationId::SecuritySsh => {
+            let ssh = desired
+                .ssh
+                .as_ref()
+                .ok_or("desired [ssh] section is missing")?;
+            let mut adapter = ssh_adapter::SshAdapter {
+                root: PathBuf::from("/"),
+                runner: ssh_adapter::SystemRunner,
+            };
+            adapter.apply(ssh)
+        }
         RemediationId::SecurityTailscaleSsh
         | RemediationId::SecurityTailscaleExitNode
         | RemediationId::SecurityTailscaleAutoUpdate => {
@@ -1798,6 +1810,31 @@ impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAda
             RemediationId::SecurityFail2banPolicy => ("fail2ban.policy", "compliant"),
             RemediationId::SecurityUfw => ("firewall.policy", "compliant"),
             RemediationId::SecurityPlexFirewall => ("plex.policy", "compliant"),
+            RemediationId::SecuritySsh => {
+                let desired = mistborn_bootstrap::config::DesiredState::load(Path::new(
+                    "/etc/mistborn/config.toml",
+                ))
+                .map_err(|error| format!("cannot load desired configuration: {error}"))?;
+                let ssh = desired
+                    .ssh
+                    .as_ref()
+                    .ok_or("desired [ssh] section is missing")?;
+                let effective = Command::new("sshd")
+                    .arg("-T")
+                    .output()
+                    .map_err(|error| format!("cannot inspect effective SSH policy: {error}"))?;
+                if !effective.status.success() {
+                    return Err("sshd -T failed during SSH verification".to_owned());
+                }
+                let text = String::from_utf8_lossy(&effective.stdout);
+                let verified = ssh_adapter::verify_effective(&text, ssh);
+                return Ok((
+                    verified.is_ok(),
+                    vec![verified.err().unwrap_or_else(|| {
+                        "sshd -T effective port/password/root policy matches".to_owned()
+                    })],
+                ));
+            }
             RemediationId::SecurityTailscaleSsh => ("tailscale.ssh", "compliant"),
             RemediationId::SecurityTailscaleExitNode => ("tailscale.exit_node", "compliant"),
             RemediationId::SecurityTailscaleAutoUpdate => ("tailscale.auto_update", "compliant"),

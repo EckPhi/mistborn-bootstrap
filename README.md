@@ -189,7 +189,7 @@ shows the proposed work and asks for approval before applying it;
 Both forms use the ordinary reconciliation lock, fresh inspection, event
 history, and post-apply verification.
 
-Phase 4 has added scoped Rust adapters for `security/ufw`,
+Phase 4 has added scoped Rust adapters for `security/ssh`, `security/ufw`,
 `security/plex-firewall`, and managed fail2ban sshd policy. UFW remediation adds
 marked rules and applies the configured default incoming policy without
 deleting rules; enabling default-deny requires a managed SSH port so access is
@@ -197,10 +197,22 @@ opened first. The Plex profile is
 atomically written only when absent or already marked Mistborn-owned. Rules or
 profiles that must be removed (for example, disabling Plex access) are not
 deleted automatically and require separate operator cleanup. UFW and Plex
-policy changes remain Access risk and require explicit approval. SSH and
-Tailscale remain unavailable pending their Phase 4 adapters. Fail2ban service
-activation remains low-risk, while jail-policy writes require explicit
-Access-risk approval.
+policy changes remain Access risk and require explicit approval. The SSH
+adapter owns only `/etc/ssh/sshd_config.d/00-mistborn.conf`; it refuses an
+unowned file, symlinked config path, an early-include/order conflict, or any
+`Match` scope it cannot verify. It validates with `sshd -t`, checks effective
+`sshd -T` values, and reloads a resolved active `ssh.service` or `sshd.service`
+(never restarts it). It does not change UFW or Tailscale. If the desired SSH
+port differs from the current port while UFW is active, the exact desired port
+must already be allowed publicly; reconcile `security/ufw` first. Any syntax,
+effective-policy, or reload failure restores the previous owned drop-in and
+tries to reload the restored policy; rollback failures are reported as
+critical. Keep an existing session open and verify a second login before
+closing it. If recovery is needed, use console access to restore the previous
+owned file (or remove `00-mistborn.conf` if it did not exist before), validate
+with `sshd -t`, and reload—not restart—the SSH service. Tailscale remains
+unavailable pending its Phase 4 adapter. Fail2ban service activation remains
+low-risk, while jail-policy writes require explicit Access-risk approval.
 
 `sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
 the latest stable bootstrap release. Existing completed setup stages remain

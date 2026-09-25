@@ -57,7 +57,7 @@ const REGISTRY: [Definition; 12] = [
         risk: RiskClass::Access,
         confirmation: ConfirmationPolicy::Explicit,
         dependency: None,
-        available: false,
+        available: true,
     },
     Definition {
         id: RemediationId::SecurityTailscaleSsh,
@@ -807,6 +807,27 @@ mod tests {
     }
 
     #[test]
+    fn ssh_is_available_but_always_explicit_and_never_safe() {
+        let id = RemediationId::SecuritySsh;
+        let definition = definition(id);
+        assert!(definition.available);
+        assert_eq!(definition.risk, RiskClass::Access);
+        assert_eq!(definition.confirmation, ConfirmationPolicy::Explicit);
+        assert!(!safe_allowlisted(id));
+        let plan = plan(
+            &serde_json::json!({}),
+            &[drift(id.as_str(), DiagnosticSeverity::Fail)],
+            Some(id),
+        )
+        .unwrap();
+        assert!(plan.remediations[0].available);
+        assert_eq!(
+            plan.remediations[0].confirmation,
+            ConfirmationPolicy::Explicit
+        );
+    }
+
+    #[test]
     fn verification_failure_is_recorded_and_never_reported_as_success() {
         let snapshot = serde_json::json!({"package": false});
         let diagnostics = vec![drift("packages/docker", DiagnosticSeverity::Fail)];
@@ -1039,12 +1060,11 @@ mod tests {
     }
 
     #[test]
-    fn not_yet_migrated_security_remediations_are_marked_and_refused_before_inspection() {
+    fn ssh_reconcile_requires_target_confirmation_before_adapter_execution() {
         let snapshot = serde_json::json!({"ssh": false});
         let diagnostics = vec![drift("security/ssh", DiagnosticSeverity::Fail)];
         let proposed = plan(&snapshot, &diagnostics, None).unwrap();
-        assert!(!proposed.remediations[0].available);
-        assert!(proposed.remediations[0].unavailable_reason.is_some());
+        assert!(proposed.remediations[0].available);
         let mut fake = Fake {
             snapshot,
             diagnostics: diagnostics.clone(),
@@ -1055,25 +1075,20 @@ mod tests {
             &diagnostics,
             &mut fake,
             &temp_file(),
-            &ApplyOptions {
-                confirmed: [RemediationId::SecuritySsh].into(),
-                ..ApplyOptions::default()
-            },
+            &ApplyOptions::default(),
         )
         .unwrap_err();
-        assert!(error.contains("is unavailable"));
+        assert!(error.contains("explicit per-remediation confirmation required"));
         assert!(fake.applied.is_empty());
     }
 
     #[test]
-    fn locked_replan_rejects_a_forged_available_flag() {
+    fn ssh_safe_and_yes_cannot_bypass_explicit_target_approval() {
         let snapshot = serde_json::json!({"ssh": false});
         let diagnostics = vec![drift("security/ssh", DiagnosticSeverity::Fail)];
-        let mut proposed = plan(&snapshot, &diagnostics, None).unwrap();
-        proposed.remediations[0].available = true;
-        proposed.remediations[0].unavailable_reason = None;
+        let proposed = plan(&snapshot, &diagnostics, None).unwrap();
         let mut fake = Fake {
-            snapshot,
+            snapshot: snapshot.clone(),
             diagnostics: diagnostics.clone(),
             ..Fake::default()
         };
@@ -1083,13 +1098,33 @@ mod tests {
             &mut fake,
             &temp_file(),
             &ApplyOptions {
-                confirmed: [RemediationId::SecuritySsh].into(),
+                non_interactive: true,
                 ..ApplyOptions::default()
             },
         )
         .unwrap_err();
-        assert!(error.contains("is unavailable"));
+        assert!(error.contains("confirmation required"));
         assert!(fake.applied.is_empty());
+
+        let mut safe_fake = Fake {
+            snapshot,
+            diagnostics: diagnostics.clone(),
+            ..Fake::default()
+        };
+        let results = reconcile(
+            &proposed,
+            &diagnostics,
+            &mut safe_fake,
+            &temp_file(),
+            &ApplyOptions {
+                safe: true,
+                confirmed: [RemediationId::SecuritySsh].into(),
+                ..ApplyOptions::default()
+            },
+        )
+        .unwrap();
+        assert!(results.is_empty());
+        assert!(safe_fake.applied.is_empty());
     }
 
     #[test]
