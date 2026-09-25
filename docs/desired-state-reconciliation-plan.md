@@ -301,6 +301,9 @@ rollback instructions, and an upgrade path are present.
   invoking official external installers.
 - Stop generating the large Bash bundle only after every migrated collection
   task has an equivalent typed remediation and verification path.
+- Maintain [`desired-state-task-coverage.tsv`](desired-state-task-coverage.tsv)
+  as the task-level migration ledger; `tests/task-coverage.sh` must pass before
+  contracting any collection module or generated bundle behavior.
 
 ## Test and release strategy
 

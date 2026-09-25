@@ -1,0 +1,30 @@
+collection	stage	task	classification	rust_remediations	rationale
+server	common	apt-index	retained Bash adapter	-	Package metadata refresh remains part of collection bootstrap.
+server	common	base-packages	retained Bash adapter	-	Installs general prerequisites not represented in desired state.
+server	docker	engine	migrated	packages/docker	Package installation has typed inspection, planning, apply, and verification.
+server	docker	service	retained Bash adapter	-	Docker active state is inspected, but this collection task also enables and starts it.
+server	zsh	packages	retained Bash adapter	-	Installs per-user shell packages outside host desired-state scope.
+server	zsh	oh-my-zsh	retained Bash adapter	-	Installs an external per-user plugin bundle.
+server	zsh	powerlevel10k	retained Bash adapter	-	Installs an external per-user theme.
+server	zsh	configuration	retained Bash adapter	-	Writes user-owned shell configuration and changes the login shell.
+server	tailscale	install	retained Bash adapter	-	Uses the official installer; package adapter parity must preserve repository setup.
+server	tailscale	forwarding	retained Bash adapter	-	Configures persistent IPv4 and IPv6 forwarding outside current typed preferences.
+server	tailscale	connect	intentionally unsupported	-	Tailnet enrollment and authentication remain operator-driven, not reconciliation.
+server	tailscale	auto-update	migrated	security/tailscale-auto-update	Tailscale preference has its own typed remediation and verification.
+server	runtipi	install	retained Bash adapter	-	Official third-party installer remains an explicit shell adapter.
+server	rclone	package	retained Bash adapter	-	Package is not currently a typed desired-state resource.
+server	rclone	configuration	intentionally unsupported	-	Interactive credential/configuration workflow is not host reconciliation.
+server	security	packages	retained Bash adapter	-	The task installs two packages, but no task-level bridge currently preserves its grouped scope.
+server	security	ssh	retained Bash adapter	-	Rust separates SSH from fail2ban policy; no task-level bridge currently preserves the legacy task's combined behavior.
+server	security	firewall	migrated	security/ufw	Base firewall policy and required ports have a typed access-gated remediation.
+server	security	plex-firewall	migrated	security/plex-firewall	Scoped Plex rules and the owned application profile have a typed remediation.
+server	security	fail2ban	migrated	security/fail2ban	Service activation is independently typed and verified.
+server	security	tailscale-only	intentionally unsupported	-	Combined broad UFW changes and public-SSH deletion are not equivalent to Tailscale preference remediations.
+server	toolset	runner	retained Bash adapter	-	Binary acquisition and installation remain installer bootstrap responsibilities.
+server	toolset	command	retained Bash adapter	-	Installs the host launcher, compatibility script, plan, and desired-state configuration.
+shell	common	apt-index	retained Bash adapter	-	Package metadata refresh remains part of collection bootstrap.
+shell	common	base-packages	retained Bash adapter	-	Installs general prerequisites not represented in desired state.
+shell	zsh	packages	retained Bash adapter	-	Installs per-user shell packages outside host desired-state scope.
+shell	zsh	oh-my-zsh	retained Bash adapter	-	Installs an external per-user plugin bundle.
+shell	zsh	powerlevel10k	retained Bash adapter	-	Installs an external per-user theme.
+shell	zsh	configuration	retained Bash adapter	-	Writes user-owned shell configuration and changes the login shell.

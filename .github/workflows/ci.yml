@@ -25,6 +25,8 @@ jobs:
         run: bash tests/config-install.sh
       - name: Test host status verification
         run: bash tests/status.sh
+      - name: Test collection-task migration coverage
+        run: bash tests/task-coverage.sh
       - name: Check generated scripts
         run: |
           git diff --exit-code -- dist/
