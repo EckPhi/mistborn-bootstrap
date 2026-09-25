@@ -1,0 +1,4 @@
+# Mistborn desired-state configuration. Optional sections are omitted so the
+# host remains unmanaged until an administrator explicitly adopts a policy.
+version = 1
+profile = "vps"

@@ -82,6 +82,8 @@ impl Dashboard {
         stage_index: usize,
         progress_file: &Path,
         tasks: &[String],
+        config_adoption_allowed: bool,
+        applied_tasks: String,
     ) -> Result<(bool, Option<i32>), String> {
         let stage = self
             .stages
@@ -105,6 +107,11 @@ impl Dashboard {
         );
         command.env("MISTBORN_PROGRESS_FILE", progress_file);
         command.env("MISTBORN_PROGRESS_STAGE", &stage.id);
+        command.env(
+            "MISTBORN_CONFIG_ADOPTION_ALLOWED",
+            if config_adoption_allowed { "1" } else { "0" },
+        );
+        command.env("MISTBORN_CONFIG_APPLIED_TASKS", applied_tasks);
         self.run_child(stage_index, command, progress_file)
     }
 

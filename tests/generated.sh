@@ -36,6 +36,14 @@ plex_only_output="$(
 [[ "$plex_only_output" != *"Would harden /etc/ssh/sshd_config"* ]]
 [[ "$plex_only_output" != *"systemctl enable --now fail2ban"* ]]
 
+decoded_config="$(
+  sed -n "s/^export MISTBORN_CONFIG_B64='\([^']*\)'$/\1/p" "$root/dist/server.sh" | base64 -d
+)"
+[[ "$decoded_config" == *'version = 1'* ]]
+[[ "$decoded_config" == *'Optional sections are omitted'* ]]
+grep -Fq 'mistborn_publish_desired_config /etc/mistborn /usr/local/share/mistborn' "$root/dist/server.sh"
+grep -Fq "export MISTBORN_CONFIG_EXAMPLE_B64='" "$root/dist/server.sh"
+
 if MISTBORN_HARDEN=1 MISTBORN_DISABLE_PASSWORD_AUTH=0 MISTBORN_PLEX_UFW=1 \
   MISTBORN_PLEX_LAN_CIDR=not-a-cidr \
   bash "$root/dist/server.sh" --dry-run --yes --user root --only security; then

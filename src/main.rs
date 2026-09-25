@@ -40,7 +40,18 @@ struct RunState {
     version: u8,
     collection: String,
     updated_at: u64,
+    #[serde(default)]
+    config_adoption: ConfigAdoption,
     modules: BTreeMap<String, ModuleState>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ConfigAdoption {
+    Pending,
+    Published,
+    #[default]
+    Ineligible,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -95,7 +106,16 @@ impl EventLog {
 }
 
 fn usage() -> &'static str {
-    "Usage: mistborn-bootstrap {run|apply|plan} COLLECTION [TARGET] [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       TARGET is STAGE or STAGE/TASK\n       mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]"
+    "Usage: mistborn-bootstrap {run|apply|plan} COLLECTION [TARGET] [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       TARGET is STAGE or STAGE/TASK\n       mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]\n       mistborn-bootstrap validate-config PATH"
+}
+
+fn validate_config(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() != 2 {
+        return Err("Usage: mistborn-bootstrap validate-config PATH".to_owned());
+    }
+    mistborn_bootstrap::config::DesiredState::load(Path::new(&arguments[1]))
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn interactive_terminal() -> bool {
@@ -217,8 +237,9 @@ fn load_state(path: &Path, collection: &str) -> Result<(RunState, bool), String>
     if !path.exists() {
         return Ok((
             RunState {
-                version: 2,
+                version: 3,
                 collection: collection.to_owned(),
+                config_adoption: ConfigAdoption::Pending,
                 ..RunState::default()
             },
             false,
@@ -227,11 +248,11 @@ fn load_state(path: &Path, collection: &str) -> Result<(RunState, bool), String>
     let file = File::open(path).map_err(|error| error.to_string())?;
     let mut state: RunState =
         serde_json::from_reader(file).map_err(|error| format!("invalid state file: {error}"))?;
-    if !(1..=2).contains(&state.version) || state.collection != collection {
+    if !(1..=3).contains(&state.version) || state.collection != collection {
         return Err("state file belongs to an incompatible run".to_owned());
     }
     let migrated = state.version == 1;
-    state.version = 2;
+    state.version = 3;
     Ok((state, migrated))
 }
 
@@ -268,6 +289,27 @@ fn target_matches(target: Option<&str>, stage: &str, task: Option<&str>) -> bool
         Some(value) if value == stage => true,
         Some(value) => task.is_some_and(|task| value == format!("{stage}/{task}")),
     }
+}
+
+fn config_applied_tasks(state: &RunState) -> String {
+    [
+        ("security", "ssh"),
+        ("security", "firewall"),
+        ("security", "plex-firewall"),
+        ("tailscale", "connect"),
+        ("tailscale", "auto-update"),
+    ]
+    .into_iter()
+    .filter(|(stage, task)| {
+        state
+            .modules
+            .get(*stage)
+            .and_then(|module| module.tasks.get(*task))
+            .is_some_and(|task| task.status == "completed")
+    })
+    .map(|(stage, task)| format!("{stage}/{task}"))
+    .collect::<Vec<_>>()
+    .join(",")
 }
 
 fn describe_plan(plan: &plan::Plan, state: &RunState, target: Option<&str>) {
@@ -521,6 +563,8 @@ fn execute(options: Options) -> Result<(), String> {
                 stage_index,
                 &progress_path,
                 &selected_tasks,
+                state.config_adoption == ConfigAdoption::Pending,
+                config_applied_tasks(&state),
             )?
         } else {
             let status = Command::new("bash")
@@ -539,6 +583,18 @@ fn execute(options: Options) -> Result<(), String> {
                 )
                 .env("MISTBORN_PROGRESS_FILE", &progress_path)
                 .env("MISTBORN_PROGRESS_STAGE", module)
+                .env(
+                    "MISTBORN_CONFIG_ADOPTION_ALLOWED",
+                    if state.config_adoption == ConfigAdoption::Pending {
+                        "1"
+                    } else {
+                        "0"
+                    },
+                )
+                .env(
+                    "MISTBORN_CONFIG_APPLIED_TASKS",
+                    config_applied_tasks(&state),
+                )
                 .status()
                 .map_err(|error| format!("failed to start {module}: {error}"))?;
             (status.success(), status.code())
@@ -622,6 +678,16 @@ fn execute(options: Options) -> Result<(), String> {
         .to_owned();
         module_state.attempts = attempts;
         module_state.updated_at = now();
+        if succeeded
+            && module == "toolset"
+            && module_state
+                .tasks
+                .get("command")
+                .is_some_and(|task| task.status == "completed")
+            && state.config_adoption == ConfigAdoption::Pending
+        {
+            state.config_adoption = ConfigAdoption::Published;
+        }
         state.updated_at = now();
         save_state(&state_path, &state)?;
         log.emit(json!({"at": now(), "event": if succeeded { "module_completed" } else { "module_failed" }, "module": module, "exit_code": exit_code, "elapsed_ms": elapsed.as_millis()}))
@@ -756,6 +822,11 @@ fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().collect();
     let result = if arguments.get(1).is_some_and(|argument| argument == "host") {
         execute_host(&arguments[1..])
+    } else if arguments
+        .get(1)
+        .is_some_and(|argument| argument == "validate-config")
+    {
+        validate_config(&arguments[1..])
     } else {
         parse_args().and_then(execute)
     };
@@ -847,9 +918,52 @@ mod tests {
 
         let (state, migrated) = load_state(&path, "server").unwrap();
         assert!(migrated);
-        assert_eq!(state.version, 2);
+        assert_eq!(state.version, 3);
+        assert_eq!(state.config_adoption, ConfigAdoption::Ineligible);
         assert_eq!(state.modules["security"].tasks["ssh"].status, "completed");
         assert_eq!(state.modules["security"].tasks["ssh"].applied_revision, 1);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn interrupted_fresh_install_remains_eligible_for_config_adoption() {
+        let base = temporary_directory();
+        let path = base.join("server.json");
+        let (mut state, migrated) = load_state(&path, "server").unwrap();
+        assert!(!migrated);
+        assert_eq!(state.config_adoption, ConfigAdoption::Pending);
+
+        state.modules.insert(
+            "security".to_owned(),
+            ModuleState {
+                status: "failed".to_owned(),
+                attempts: 1,
+                updated_at: 1,
+                tasks: BTreeMap::new(),
+            },
+        );
+        save_state(&path, &state).unwrap();
+
+        let (resumed, migrated) = load_state(&path, "server").unwrap();
+        assert!(!migrated);
+        assert_eq!(resumed.config_adoption, ConfigAdoption::Pending);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn legacy_upgrade_is_ineligible_for_config_adoption() {
+        let base = temporary_directory();
+        let path = base.join("server.json");
+        fs::write(
+            &path,
+            r#"{"version":2,"collection":"server","updated_at":1,"modules":{}}"#,
+        )
+        .unwrap();
+
+        let (state, migrated) = load_state(&path, "server").unwrap();
+        assert!(!migrated);
+        assert_eq!(state.version, 3);
+        assert_eq!(state.config_adoption, ConfigAdoption::Ineligible);
         fs::remove_dir_all(base).unwrap();
     }
 

@@ -84,8 +84,11 @@ source-file list, and the runner checks that their order matches the TOML plan.
 Each task may declare a `revision`, the environment-variable names that affect
 its desired state, and whether a changed or newly added task requires an
 explicit apply on an existing installation. State files from the original
-module-level model are migrated automatically to version 2. Before the first
-v2 write, the runner preserves the original as `<collection>.json.v1.bak`.
+module-level model are migrated automatically to the current version 3 schema.
+Before the first migration from v1, the runner preserves the original as
+`<collection>.json.v1.bak`. Version 3 also persists whether a fresh install may
+still adopt explicitly applied settings, so an interrupted initial run remains
+distinguishable from a legacy upgrade.
 `plan` is read-only and reports `current`, `pending`, `changed`, or `stale`.
 `run` remains a compatibility alias for `apply`; a `STAGE` target reruns that
 stage's tasks, while `STAGE/TASK` changes only one task.
@@ -113,6 +116,15 @@ sudo mistborn update-apps
 sudo mistborn update-core latest
 sudo mistborn update-appstores
 ```
+
+It also installs `/etc/mistborn/config.toml`, the versioned desired-state
+configuration used by the Rust host-management engine. On a fresh installation
+it adopts only explicitly requested SSH, firewall, Plex, and Tailscale settings
+whose installer tasks completed successfully. Other areas remain unmanaged.
+Upgrades never infer policy from the live host, and an existing configuration
+is never overwritten. A complete, non-secret example is available at
+`/usr/local/share/mistborn/config.toml.example`. Reinstalling or upgrading does
+not overwrite an existing `/etc/mistborn/config.toml`.
 
 Run `mistborn` or `mistborn help` without a subcommand to open the interactive
 command picker. Use the arrow keys (or `j`/`k`) to select an operation, Enter

@@ -1,0 +1,23 @@
+version = 1
+profile = "vps"
+
+[ssh]
+port = 22
+password_authentication = false
+root_login = false
+
+[firewall]
+enabled = true
+default_incoming = "deny"
+public_tcp_ports = [80, 443]
+
+[firewall.plex]
+enabled = true
+public_remote_access = true
+lan_cidr = "192.168.1.0/24"
+tailscale = true
+
+[tailscale]
+ssh = true
+advertise_exit_node = false
+auto_update = true

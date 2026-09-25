@@ -168,6 +168,7 @@ action = "install mistborn-bootstrap"
 weight = 2
 [[stages.tasks]]
 id = "command"
-title = "Install the mistborn command"
-action = "install host command and update plan"
+title = "Install the mistborn command and configuration"
+action = "install host command, update plan, and unmanaged desired-state configuration"
 weight = 1
+revision = 2

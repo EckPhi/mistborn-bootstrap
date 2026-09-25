@@ -21,12 +21,14 @@ jobs:
         run: bash tests/versioning.sh
       - name: Test generated module options
         run: bash tests/generated.sh
+      - name: Test desired-state configuration install
+        run: bash tests/config-install.sh
       - name: Test host status verification
         run: bash tests/status.sh
       - name: Check generated scripts
         run: |
           git diff --exit-code -- dist/
           bash -n install.sh
-          shellcheck -x install.sh lib/*.sh modules/*.sh tools/*.sh dist/*.sh
+          shellcheck -x install.sh lib/*.sh modules/*.sh tools/*.sh dist/*.sh tests/*.sh
           shellcheck assets/mistborn
           for script in dist/*.sh; do sudo bash "$script" --dry-run --yes --user runner; done
