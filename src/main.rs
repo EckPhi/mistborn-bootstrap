@@ -1,5 +1,6 @@
 mod command_dashboard;
 mod dashboard;
+mod input;
 mod plan;
 mod progress;
 

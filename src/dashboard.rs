@@ -1,3 +1,6 @@
+use crate::input::{
+    InputAction, InputMode, ModalInput, disable_mouse, enable_mouse, scroll_terminal,
+};
 use crate::plan::Stage;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -28,11 +31,13 @@ pub struct Dashboard {
     task_status: Vec<Vec<StepStatus>>,
     active: usize,
     parser: vt100::Parser,
+    input: ModalInput,
 }
 
 impl Dashboard {
     pub fn new(collection: &str, stages: &[Stage], completed: &[bool]) -> Result<Self, String> {
         let terminal = ratatui::try_init().map_err(|error| error.to_string())?;
+        enable_mouse()?;
         let stage_status = stages
             .iter()
             .zip(completed)
@@ -66,6 +71,7 @@ impl Dashboard {
             task_status,
             active: 0,
             parser: vt100::Parser::new(24, 120, 500),
+            input: ModalInput::new(),
         })
     }
 
@@ -98,7 +104,9 @@ impl Dashboard {
     }
 
     pub fn wait_for_exit(&mut self, home_available: bool) -> Result<bool, String> {
+        self.input.navigation();
         let output = self.parser.screen().contents();
+        let mode = self.input.mode();
         self.terminal
             .draw(|frame| {
                 draw(
@@ -109,6 +117,7 @@ impl Dashboard {
                     &self.task_status,
                     self.active,
                     &output,
+                    mode,
                     true,
                     home_available,
                 )
@@ -116,11 +125,38 @@ impl Dashboard {
             .map_err(|error| error.to_string())?;
         loop {
             if event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
-                if let Event::Key(key) = event::read().map_err(|error| error.to_string())? {
-                    if key.kind == KeyEventKind::Press {
-                        return Ok(home_available
-                            && matches!(key.code, KeyCode::Char('h') | KeyCode::Home));
+                let event = event::read().map_err(|error| error.to_string())?;
+                if let Event::Key(key) = &event
+                    && key.kind == KeyEventKind::Press
+                    && home_available
+                    && matches!(key.code, KeyCode::Char('h') | KeyCode::Home)
+                {
+                    return Ok(true);
+                }
+                match self.input.handle(&event) {
+                    InputAction::Quit => return Ok(false),
+                    action @ (InputAction::ScrollUp(_) | InputAction::ScrollDown(_)) => {
+                        scroll_terminal(&mut self.parser, action);
+                        let output = self.parser.screen().contents();
+                        let mode = self.input.mode();
+                        self.terminal
+                            .draw(|frame| {
+                                draw(
+                                    frame,
+                                    &self.collection,
+                                    &self.stages,
+                                    &self.stage_status,
+                                    &self.task_status,
+                                    self.active,
+                                    &output,
+                                    mode,
+                                    true,
+                                    home_available,
+                                )
+                            })
+                            .map_err(|error| error.to_string())?;
                     }
+                    _ => {}
                 }
             }
         }
@@ -133,6 +169,7 @@ impl Dashboard {
         progress_file: &Path,
     ) -> Result<(bool, Option<i32>), String> {
         self.active = stage_index;
+        self.input.navigation();
         self.stage_status[self.active] = StepStatus::Running;
         self.task_status[self.active].fill(StepStatus::Pending);
         self.parser = vt100::Parser::new(24, 120, 500);
@@ -187,6 +224,7 @@ impl Dashboard {
             let stage_status = &self.stage_status;
             let task_status = &self.task_status;
             let active = self.active;
+            let mode = self.input.mode();
             self.terminal
                 .draw(|frame| {
                     draw(
@@ -197,6 +235,7 @@ impl Dashboard {
                         task_status,
                         active,
                         &output,
+                        mode,
                         false,
                         false,
                     )
@@ -253,6 +292,7 @@ impl Dashboard {
                             &self.task_status,
                             self.active,
                             &output,
+                            self.input.mode(),
                             false,
                             false,
                         )
@@ -263,14 +303,24 @@ impl Dashboard {
 
             if event::poll(Duration::from_millis(50)).map_err(|error| error.to_string())? {
                 match event::read().map_err(|error| error.to_string())? {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        if let Some(bytes) = encode_key(key) {
-                            writer
-                                .write_all(&bytes)
-                                .map_err(|error| error.to_string())?;
-                            writer.flush().map_err(|error| error.to_string())?;
+                    event @ (Event::Key(_) | Event::Mouse(_)) => match self.input.handle(&event) {
+                        InputAction::Quit => {
+                            child.kill().map_err(|error| error.to_string())?;
+                            return Ok((false, None));
                         }
-                    }
+                        InputAction::Forward(key) => {
+                            if let Some(bytes) = encode_key(key) {
+                                writer
+                                    .write_all(&bytes)
+                                    .map_err(|error| error.to_string())?;
+                                writer.flush().map_err(|error| error.to_string())?;
+                            }
+                        }
+                        action @ (InputAction::ScrollUp(_) | InputAction::ScrollDown(_)) => {
+                            scroll_terminal(&mut self.parser, action);
+                        }
+                        InputAction::None => {}
+                    },
                     Event::Resize(width, height) => {
                         let rows = height.saturating_sub(16).max(4);
                         pair.master
@@ -291,10 +341,12 @@ impl Dashboard {
 
 impl Drop for Dashboard {
     fn drop(&mut self) {
+        disable_mouse();
         let _ = ratatui::try_restore();
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw(
     frame: &mut Frame,
     collection: &str,
@@ -303,6 +355,7 @@ fn draw(
     task_status: &[Vec<StepStatus>],
     active: usize,
     terminal_output: &str,
+    mode: InputMode,
     finished: bool,
     home_available: bool,
 ) {
@@ -379,10 +432,14 @@ fn draw(
         ),
         right[1],
     );
+    let terminal_title = match mode {
+        InputMode::Navigation => " Terminal · NAVIGATION ",
+        InputMode::Insert => " Terminal · INSERT ",
+    };
     frame.render_widget(
         Paragraph::new(terminal_output.to_owned())
             .wrap(Wrap { trim: false })
-            .block(Block::default().title(" Terminal ").borders(Borders::ALL)),
+            .block(Block::default().title(terminal_title).borders(Borders::ALL)),
         body[1],
     );
     let total_weight: u64 = stages
@@ -421,11 +478,13 @@ fn draw(
             .block(
                 Block::default()
                     .title(if finished && home_available {
-                        " Complete · H/Home to command menu · any other key exits "
+                        " Complete · H/Home menu · ↑/↓ scroll · q/Esc exit "
                     } else if finished {
-                        " Complete · press any key to exit "
+                        " Complete · ↑/↓ scroll · q/Esc exit "
+                    } else if mode == InputMode::Insert {
+                        " INSERT · keys go to installer · Esc navigation "
                     } else {
-                        " Overall progress "
+                        " NAV · i/Enter insert · ↑/↓ scroll · q/Esc quit "
                     })
                     .borders(Borders::ALL),
             )

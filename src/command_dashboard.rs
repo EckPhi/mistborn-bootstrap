@@ -1,5 +1,8 @@
+use crate::input::{
+    InputAction, InputMode, ModalInput, disable_mouse, enable_mouse, scroll_terminal,
+};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Wrap};
@@ -17,6 +20,7 @@ pub struct CommandDashboard {
     help: &'static str,
     parser: vt100::Parser,
     status: CommandStatus,
+    input: ModalInput,
 }
 
 #[derive(Clone, Copy)]
@@ -29,6 +33,7 @@ enum CommandStatus {
 impl CommandDashboard {
     pub fn select_command() -> Result<Option<&'static str>, String> {
         let terminal = ratatui::try_init().map_err(|error| error.to_string())?;
+        enable_mouse()?;
         let mut menu = CommandMenu { terminal };
         let mut selected = 0;
         loop {
@@ -50,6 +55,13 @@ impl CommandDashboard {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
                     _ => {}
                 },
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        selected = selected.checked_sub(1).unwrap_or(MENU_COMMANDS.len() - 1);
+                    }
+                    MouseEventKind::ScrollDown => selected = (selected + 1) % MENU_COMMANDS.len(),
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -57,6 +69,7 @@ impl CommandDashboard {
 
     pub fn new(operation: &str, command: &str) -> Result<Self, String> {
         let terminal = ratatui::try_init().map_err(|error| error.to_string())?;
+        enable_mouse()?;
         Ok(Self {
             terminal,
             operation: operation.to_owned(),
@@ -64,6 +77,7 @@ impl CommandDashboard {
             help: command_help(operation),
             parser: vt100::Parser::new(24, 120, 500),
             status: CommandStatus::Running,
+            input: ModalInput::new(),
         })
     }
 
@@ -138,14 +152,24 @@ impl CommandDashboard {
 
             if event::poll(Duration::from_millis(50)).map_err(|error| error.to_string())? {
                 match event::read().map_err(|error| error.to_string())? {
-                    Event::Key(key) if key.kind == KeyEventKind::Press => {
-                        if let Some(bytes) = encode_key(key) {
-                            writer
-                                .write_all(&bytes)
-                                .map_err(|error| error.to_string())?;
-                            writer.flush().map_err(|error| error.to_string())?;
+                    event @ (Event::Key(_) | Event::Mouse(_)) => match self.input.handle(&event) {
+                        InputAction::Quit => {
+                            child.kill().map_err(|error| error.to_string())?;
+                            return Ok((false, None));
                         }
-                    }
+                        InputAction::Forward(key) => {
+                            if let Some(bytes) = encode_key(key) {
+                                writer
+                                    .write_all(&bytes)
+                                    .map_err(|error| error.to_string())?;
+                                writer.flush().map_err(|error| error.to_string())?;
+                            }
+                        }
+                        action @ (InputAction::ScrollUp(_) | InputAction::ScrollDown(_)) => {
+                            scroll_terminal(&mut self.parser, action);
+                        }
+                        InputAction::None => {}
+                    },
                     Event::Resize(width, height) => {
                         pair.master
                             .resize(PtySize {
@@ -163,13 +187,24 @@ impl CommandDashboard {
     }
 
     pub fn wait_for_exit(&mut self) -> Result<bool, String> {
+        self.input.navigation();
         self.draw()?;
         loop {
             if event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
-                if let Event::Key(key) = event::read().map_err(|error| error.to_string())? {
-                    if key.kind == KeyEventKind::Press {
-                        return Ok(matches!(key.code, KeyCode::Char('h') | KeyCode::Home));
+                let event = event::read().map_err(|error| error.to_string())?;
+                if let Event::Key(key) = &event
+                    && key.kind == KeyEventKind::Press
+                    && matches!(key.code, KeyCode::Char('h') | KeyCode::Home)
+                {
+                    return Ok(true);
+                }
+                match self.input.handle(&event) {
+                    InputAction::Quit => return Ok(false),
+                    action @ (InputAction::ScrollUp(_) | InputAction::ScrollDown(_)) => {
+                        scroll_terminal(&mut self.parser, action);
+                        self.draw()?;
                     }
+                    _ => {}
                 }
             }
         }
@@ -181,8 +216,9 @@ impl CommandDashboard {
         let command = self.command.clone();
         let help = self.help;
         let status = self.status;
+        let mode = self.input.mode();
         self.terminal
-            .draw(|frame| draw(frame, &operation, &command, help, status, &output))
+            .draw(|frame| draw(frame, &operation, &command, help, status, mode, &output))
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
@@ -257,6 +293,7 @@ impl CommandMenu {
 
 impl Drop for CommandMenu {
     fn drop(&mut self) {
+        disable_mouse();
         let _ = ratatui::try_restore();
     }
 }
@@ -332,6 +369,7 @@ const MENU_COMMANDS: &[MenuCommand] = &[
 
 impl Drop for CommandDashboard {
     fn drop(&mut self) {
+        disable_mouse();
         let _ = ratatui::try_restore();
     }
 }
@@ -342,6 +380,7 @@ fn draw(
     command: &str,
     help: &str,
     status: CommandStatus,
+    mode: InputMode,
     terminal_output: &str,
 ) {
     let outer = Layout::default()
@@ -385,20 +424,26 @@ fn draw(
             .block(Block::default().title(" Help ").borders(Borders::ALL)),
         top[1],
     );
+    let terminal_title = match mode {
+        InputMode::Navigation => format!(" {command} · NAVIGATION "),
+        InputMode::Insert => format!(" {command} · INSERT "),
+    };
     frame.render_widget(
         Paragraph::new(terminal_output.to_owned())
             .wrap(Wrap { trim: false })
-            .block(
-                Block::default()
-                    .title(format!(" {} · press keys to interact ", command))
-                    .borders(Borders::ALL),
-            ),
+            .block(Block::default().title(terminal_title).borders(Borders::ALL)),
         outer[1],
     );
     let (ratio, footer) = match status {
-        CommandStatus::Running => (0.0, "Running · Ctrl-C interrupts"),
-        CommandStatus::Complete => (1.0, "H/Home to command menu · any other key exits"),
-        CommandStatus::Failed => (1.0, "H/Home to command menu · any other key exits"),
+        CommandStatus::Running => (
+            0.0,
+            match mode {
+                InputMode::Navigation => "NAV · i/Enter insert · ↑/↓ scroll · q/Esc quit",
+                InputMode::Insert => "INSERT · keys go to command · Esc navigation",
+            },
+        ),
+        CommandStatus::Complete => (1.0, "H/Home menu · ↑/↓ scroll · q/Esc exit"),
+        CommandStatus::Failed => (1.0, "H/Home menu · ↑/↓ scroll · q/Esc exit"),
     };
     frame.render_widget(
         Gauge::default()
