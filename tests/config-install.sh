@@ -32,8 +32,8 @@ grep -Fq 'ssh = true' "$fresh_config"
 grep -Fq '[fail2ban.sshd]' "$fresh_config"
 grep -Fq 'maxretry = 3' "$fresh_config"
 [[ -f "$fresh/share/mistborn/config.toml.example" ]]
-mode="$(stat -f '%Lp' "$fresh_config" 2>/dev/null || stat -c '%a' "$fresh_config")"
-owner="$(stat -f '%u:%g' "$fresh_config" 2>/dev/null || stat -c '%u:%g' "$fresh_config")"
+mode="$(stat -c '%a' "$fresh_config" 2>/dev/null || stat -f '%Lp' "$fresh_config")"
+owner="$(stat -c '%u:%g' "$fresh_config" 2>/dev/null || stat -f '%u:%g' "$fresh_config")"
 [[ "$mode" == 644 ]]
 [[ "$owner" == "$MISTBORN_CONFIG_OWNER" ]]
 
