@@ -308,12 +308,12 @@ const MENU_COMMANDS: &[MenuCommand] = &[
     MenuCommand {
         label: "Status",
         operation: Some("status"),
-        help: "Read-only overview of installed components, service health, and Tailscale connectivity.",
+        help: "Rust read-only overview of component versions and observed host state. Use --legacy for the previous Bash report during this compatibility release.",
     },
     MenuCommand {
         label: "Doctor",
         operation: Some("doctor"),
-        help: "Audit Docker, Runtipi, Tailscale, rclone, and security tools for common issues.",
+        help: "Rust read-only host audit with stable remediation IDs. Use --format json for automation or --legacy for the previous Bash audit during this compatibility release.",
     },
     MenuCommand {
         label: "Fix services",
@@ -462,10 +462,10 @@ fn draw(
 fn command_help(operation: &str) -> &'static str {
     match operation {
         "status" => {
-            "Read-only overview of installed components, service health, and Tailscale connectivity."
+            "Rust read-only overview with component versions; use --format json for automation or --legacy for the previous Bash report during this release."
         }
         "doctor" => {
-            "Audits Docker, Runtipi, Tailscale, rclone, and security tools. Warnings do not change configuration."
+            "Rust read-only host audit with stable remediation IDs; use --format json or --legacy for the previous Bash audit during this release."
         }
         "fix" => {
             "Enables and starts installed Docker and Tailscale services. SSH and firewall settings remain unchanged."

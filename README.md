@@ -134,11 +134,19 @@ server setup screen, press `h` or Home to return to the command picker.
 App and core updates create native Runtipi app snapshots first. Pass
 `--no-backup` immediately after the update command to opt out.
 
-`mistborn status` reports installed component versions, service health,
-bootstrap state, and effective SSH, UFW, fail2ban, Plex, and Tailscale
-configuration. It verifies required managed firewall rules but permits
-unrelated administrator rules. `sudo mistborn fix` enables and starts installed Docker and
-Tailscale services; it leaves firewall and SSH configuration untouched.
+`mistborn status` and `mistborn doctor` run read-only Rust inspections. Status
+prints component versions and an observed-facts summary; doctor reports
+diagnostics with stable remediation IDs. Add `--format json` for machine
+readable output. Inspection errors remain distinguishable from detected drift,
+and checks for optional areas such as Plex are treated as unmanaged until the
+desired configuration enables them. The former Bash reports remain available
+for this compatibility release through `mistborn status --legacy` and
+`mistborn doctor --legacy`; Rust does not fall back to them automatically.
+JSON reports use a versioned envelope (`schema_version`, `command`, config
+metadata, severity/error counts, and `drift_count`) alongside observed facts
+and diagnostics. CLI usage and format errors exit with status 2; drift exits 1.
+`sudo mistborn fix` enables and starts installed Docker and Tailscale services;
+it leaves firewall and SSH configuration untouched.
 `sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
 the latest stable bootstrap release. Existing completed setup stages remain
 skipped while the host-tool stage is refreshed. `sudo mistborn update-runtipi`

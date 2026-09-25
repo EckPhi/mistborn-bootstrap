@@ -1,0 +1,1819 @@
+//! Read-only host inspection used by the `mistborn status` and `doctor` commands.
+
+use mistborn_bootstrap::domain::{
+    CommandAdapter, CommandOutput, Diagnostic, DiagnosticSeverity, ObservedState, RiskClass,
+};
+use serde::Serialize;
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+pub use mistborn_bootstrap::domain::InspectionStatus;
+
+pub struct SystemCommands;
+
+impl CommandAdapter for SystemCommands {
+    fn run(&self, program: &str, arguments: &[&str]) -> Result<CommandOutput, String> {
+        let output = Command::new(program)
+            .args(arguments)
+            .output()
+            .map_err(|error| error.to_string())?;
+        Ok(CommandOutput {
+            status: output.status.code().unwrap_or(128),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct Report {
+    pub schema_version: u32,
+    pub command: &'static str,
+    pub version: String,
+    pub config: ConfigSummary,
+    pub summary: ReportSummary,
+    pub observed: ObservedState,
+    pub diagnostics: Vec<Diagnostic>,
+    pub inspection_incomplete: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConfigSummary {
+    pub path: &'static str,
+    pub schema_version: Option<u32>,
+    pub status: &'static str,
+}
+
+#[derive(Debug, Default, Serialize, PartialEq, Eq)]
+pub struct ReportSummary {
+    pub pass_count: usize,
+    pub warn_count: usize,
+    pub fail_count: usize,
+    pub error_count: usize,
+    pub drift_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportKind {
+    Status,
+    Doctor,
+}
+
+pub fn inspect(kind: ReportKind, runner: &impl CommandAdapter) -> Report {
+    let mut observed = ObservedState::default();
+    let mut diagnostics = Vec::new();
+    let mut versions = BTreeMap::new();
+    let mut incomplete = false;
+    let mut config_status = "unmanaged";
+    let mut config_schema_version = None;
+    let desired = match mistborn_bootstrap::config::DesiredState::load(Path::new(
+        "/etc/mistborn/config.toml",
+    )) {
+        Ok(desired) => {
+            config_status = "loaded";
+            config_schema_version = Some(1);
+            observed.facts.insert(
+                "desired_config".to_owned(),
+                InspectionStatus::Available(json!({"loaded": true})),
+            );
+            Some(desired)
+        }
+        Err(mistborn_bootstrap::config::ConfigError::Read(error))
+            if error.kind() == ErrorKind::NotFound =>
+        {
+            observed.facts.insert(
+                "desired_config".to_owned(),
+                InspectionStatus::Available(json!({"loaded": false, "managed": false})),
+            );
+            None
+        }
+        Err(error) => {
+            config_status = "error";
+            let message = error.to_string();
+            observed.facts.insert(
+                "desired_config".to_owned(),
+                InspectionStatus::Error {
+                    message: message.clone(),
+                },
+            );
+            diagnostics.push(diag(
+                "config/read",
+                DiagnosticSeverity::Warn,
+                "Desired configuration could not be loaded",
+                vec![message],
+                None,
+            ));
+            incomplete = true;
+            None
+        }
+    };
+
+    for package in [
+        "docker",
+        "tailscale",
+        "rclone",
+        "ufw",
+        "fail2ban-client",
+        "runtipi-cli",
+    ] {
+        let required = package == "docker"
+            || (package == "tailscale"
+                && desired
+                    .as_ref()
+                    .is_some_and(|state| state.tailscale.is_some()))
+            || (package == "ufw"
+                && desired
+                    .as_ref()
+                    .is_some_and(|state| state.firewall.is_some()));
+        let path = match find_executable(package) {
+            Some(path) => path.display().to_string(),
+            None => {
+                observed.facts.insert(
+                    format!("package.{package}"),
+                    InspectionStatus::Available(json!({"installed": false, "required": required})),
+                );
+                if required || kind == ReportKind::Doctor {
+                    diagnostics.push(diag(
+                        format!("package/{package}"),
+                        if required {
+                            DiagnosticSeverity::Fail
+                        } else {
+                            DiagnosticSeverity::Warn
+                        },
+                        format!("{package} is not installed"),
+                        vec![],
+                        if required {
+                            Some(format!("packages/{package}"))
+                        } else {
+                            None
+                        },
+                    ));
+                }
+                incomplete |= required;
+                continue;
+            }
+        };
+        observed.facts.insert(
+            format!("package.{package}"),
+            InspectionStatus::Available(
+                json!({"installed": true, "required": required, "path": path}),
+            ),
+        );
+        let version = match runner.run(package, &["--version"]) {
+            Ok(output) if output.status == 0 => output
+                .stdout
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_owned(),
+            Ok(output) => {
+                let message = format!(
+                    "{package} --version exited {}: {}",
+                    output.status,
+                    output.stderr.trim()
+                );
+                observed.facts.insert(
+                    format!("package.version.{package}"),
+                    InspectionStatus::Error { message },
+                );
+                String::new()
+            }
+            Err(error) => {
+                let state = command_error(error);
+                observed
+                    .facts
+                    .insert(format!("package.version.{package}"), state);
+                String::new()
+            }
+        };
+        if version.is_empty() {
+            observed
+                .facts
+                .entry(format!("package.version.{package}"))
+                .or_insert_with(|| InspectionStatus::Error {
+                    message: format!("{package} --version returned no version text"),
+                });
+            incomplete |= required;
+            versions.insert(package, None);
+        } else {
+            observed.facts.insert(
+                format!("package.version.{package}"),
+                InspectionStatus::Available(json!(version)),
+            );
+            versions.insert(package, Some(version));
+        }
+    }
+
+    let runtipi_path = PathBuf::from("/opt/runtipi");
+    let runtipi_exists = match fs::metadata(&runtipi_path) {
+        Ok(metadata) => Some(metadata.is_dir()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Some(false),
+        Err(error) => {
+            let message = format!("cannot inspect {}: {error}", runtipi_path.display());
+            observed.facts.insert(
+                "runtipi.directory".to_owned(),
+                InspectionStatus::Error {
+                    message: message.clone(),
+                },
+            );
+            diagnostics.push(diag(
+                "inspection/runtipi/directory",
+                DiagnosticSeverity::Warn,
+                "Runtipi directory could not be inspected",
+                vec![message],
+                None,
+            ));
+            incomplete = true;
+            None
+        }
+    };
+    if let Some(exists) = runtipi_exists {
+        observed.facts.insert(
+            "runtipi.directory".to_owned(),
+            InspectionStatus::Available(json!({"path": runtipi_path, "exists": exists})),
+        );
+        if kind == ReportKind::Doctor {
+            diagnostics.push(diag(
+                "runtipi/directory",
+                if exists {
+                    DiagnosticSeverity::Pass
+                } else {
+                    DiagnosticSeverity::Fail
+                },
+                if exists {
+                    "Runtipi directory exists"
+                } else {
+                    "Runtipi directory missing"
+                },
+                vec!["/opt/runtipi".to_owned()],
+                None,
+            ));
+        }
+    }
+
+    for service in ["docker", "tailscaled", "fail2ban"] {
+        let key = format!("service.{service}");
+        match runner.run("systemctl", &["is-active", service]) {
+            Ok(output) => match parse_systemctl_active(&output) {
+                Ok(true) => {
+                    observed
+                        .facts
+                        .insert(key, InspectionStatus::Available(json!({"active": true})));
+                    if kind == ReportKind::Doctor {
+                        diagnostics.push(diag(
+                            format!("service/{service}"),
+                            if service == "fail2ban" {
+                                DiagnosticSeverity::Warn
+                            } else {
+                                DiagnosticSeverity::Pass
+                            },
+                            if service == "fail2ban" {
+                                "fail2ban active; desired policy is unmanaged".to_owned()
+                            } else {
+                                format!("{service} active")
+                            },
+                            vec![],
+                            None,
+                        ));
+                    }
+                }
+                Ok(false) => {
+                    observed.facts.insert(
+                        key,
+                        InspectionStatus::Available(
+                            json!({"active": false, "state": output.stdout.trim()}),
+                        ),
+                    );
+                    if kind == ReportKind::Doctor {
+                        let remediation = if service == "fail2ban" {
+                            "security/fail2ban".to_owned()
+                        } else {
+                            format!("services/{service}")
+                        };
+                        diagnostics.push(diag(
+                            format!("service/{service}"),
+                            DiagnosticSeverity::Warn,
+                            format!("{service} {}", output.stdout.trim()),
+                            vec!["systemctl is-active exit status 3".to_owned()],
+                            if service == "fail2ban" {
+                                Some(remediation)
+                            } else {
+                                None
+                            },
+                        ));
+                    }
+                }
+                Err(message) => {
+                    let message = format!("systemctl is-active {service}: {message}");
+                    observed.facts.insert(
+                        key,
+                        InspectionStatus::Error {
+                            message: message.clone(),
+                        },
+                    );
+                    if kind == ReportKind::Doctor {
+                        diagnostics.push(diag(
+                            format!("service/{service}"),
+                            DiagnosticSeverity::Warn,
+                            format!("Could not determine {service} state"),
+                            vec![message],
+                            None,
+                        ));
+                    }
+                    incomplete |= (service == "tailscaled"
+                        && desired
+                            .as_ref()
+                            .is_some_and(|state| state.tailscale.is_some()))
+                        || (service == "docker");
+                }
+            },
+            Err(error) => {
+                let state = command_error(error);
+                let message = inspection_message(&state);
+                if kind == ReportKind::Doctor {
+                    diagnostics.push(diag(
+                        format!("inspection/service/{service}"),
+                        DiagnosticSeverity::Warn,
+                        format!("Could not inspect {service} service state"),
+                        vec![message],
+                        None,
+                    ));
+                }
+                incomplete |= service == "docker"
+                    || (service == "tailscaled"
+                        && desired
+                            .as_ref()
+                            .is_some_and(|state| state.tailscale.is_some()));
+                observed.facts.insert(key, state);
+            }
+        }
+    }
+
+    incomplete |= inspect_ufw(
+        runner,
+        desired.as_ref(),
+        &mut observed,
+        kind,
+        &mut diagnostics,
+    );
+
+    inspect_command(
+        runner,
+        &mut observed,
+        CommandCheck {
+            key: "fail2ban.sshd",
+            program: "fail2ban-client",
+            args: &["status", "sshd"],
+            pass: "fail2ban sshd jail available",
+            fail: "fail2ban sshd jail unavailable",
+        },
+        ReportKind::Status,
+        &mut diagnostics,
+    );
+    if kind == ReportKind::Doctor
+        && desired
+            .as_ref()
+            .and_then(|state| state.firewall.as_ref())
+            .and_then(|firewall| firewall.plex.as_ref())
+            .is_none()
+    {
+        diagnostics.push(diag(
+            "security/plex-firewall",
+            DiagnosticSeverity::Warn,
+            "Plex firewall policy is unmanaged",
+            vec![],
+            None,
+        ));
+    }
+    // fail2ban has no desired-state section in config schema v1. Keep its facts
+    // visible, but do not report a passing policy check until it is managed.
+    let tailscale_incomplete = inspect_tailscale(
+        runner,
+        desired.as_ref(),
+        &mut observed,
+        kind,
+        &mut diagnostics,
+    );
+    incomplete |= tailscale_incomplete;
+    inspect_command(
+        runner,
+        &mut observed,
+        CommandCheck {
+            key: "ssh.effective",
+            program: "sshd",
+            args: &["-T"],
+            pass: "SSH effective configuration available",
+            fail: "SSH effective configuration unavailable",
+        },
+        ReportKind::Status,
+        &mut diagnostics,
+    );
+
+    if kind == ReportKind::Doctor {
+        diagnostics.push(diag(
+            "security/fail2ban",
+            DiagnosticSeverity::Warn,
+            "fail2ban policy is unmanaged",
+            vec![],
+            None,
+        ));
+    }
+
+    if let Some(InspectionStatus::Available(value)) = observed.facts.get("ssh.effective") {
+        match parse_sshd(
+            value
+                .get("output")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ) {
+            Ok(ssh) => {
+                observed.facts.insert(
+                    "ssh.policy".to_owned(),
+                    InspectionStatus::Available(ssh.clone()),
+                );
+                if let Some(policy) = desired.as_ref().and_then(|state| state.ssh.as_ref()) {
+                    let diagnostic = compare_ssh_policy(&ssh, policy);
+                    observed.facts.insert(
+                        "ssh.comparison".to_owned(),
+                        InspectionStatus::Available(
+                            json!({"compliant": diagnostic.severity == DiagnosticSeverity::Pass}),
+                        ),
+                    );
+                    diagnostics.push(diagnostic);
+                } else if kind == ReportKind::Doctor {
+                    diagnostics.push(diag(
+                        "security/ssh",
+                        DiagnosticSeverity::Warn,
+                        "SSH policy is unmanaged",
+                        vec![ssh.to_string()],
+                        None,
+                    ));
+                }
+            }
+            Err(message) => {
+                observed
+                    .facts
+                    .insert("ssh.policy".to_owned(), InspectionStatus::Error { message });
+            }
+        }
+    }
+    if desired.as_ref().is_some_and(|state| state.ssh.is_some())
+        && !matches!(
+            observed.facts.get("ssh.policy"),
+            Some(InspectionStatus::Available(_))
+        )
+    {
+        incomplete = true;
+    }
+
+    observed.facts.insert(
+        "versions".to_owned(),
+        InspectionStatus::Available(serde_json::to_value(versions).unwrap_or(Value::Null)),
+    );
+    add_inspection_diagnostics(&observed, &mut diagnostics);
+    let summary = summarize(&observed, &diagnostics);
+    Report {
+        schema_version: 1,
+        command: match kind {
+            ReportKind::Status => "status",
+            ReportKind::Doctor => "doctor",
+        },
+        version: format!("v{}", env!("CARGO_PKG_VERSION")),
+        config: ConfigSummary {
+            path: "/etc/mistborn/config.toml",
+            schema_version: config_schema_version,
+            status: config_status,
+        },
+        summary,
+        observed,
+        diagnostics,
+        inspection_incomplete: incomplete,
+    }
+}
+
+fn summarize(observed: &ObservedState, diagnostics: &[Diagnostic]) -> ReportSummary {
+    let mut summary = ReportSummary::default();
+    for diagnostic in diagnostics {
+        match diagnostic.severity {
+            DiagnosticSeverity::Pass => summary.pass_count += 1,
+            DiagnosticSeverity::Warn => summary.warn_count += 1,
+            DiagnosticSeverity::Fail => summary.fail_count += 1,
+        }
+    }
+    summary.drift_count = summary.fail_count;
+    summary.error_count = observed
+        .facts
+        .values()
+        .filter(|state| matches!(state, InspectionStatus::Error { .. }))
+        .count();
+    summary
+}
+
+struct CommandCheck<'a> {
+    key: &'a str,
+    program: &'a str,
+    args: &'a [&'a str],
+    pass: &'a str,
+    fail: &'a str,
+}
+
+fn inspect_command(
+    runner: &impl CommandAdapter,
+    observed: &mut ObservedState,
+    check: CommandCheck<'_>,
+    kind: ReportKind,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let CommandCheck {
+        key,
+        program,
+        args,
+        pass,
+        fail,
+    } = check;
+    match runner.run(program, args) {
+        Ok(output) if output.status == 0 => {
+            observed.facts.insert(
+                key.to_owned(),
+                InspectionStatus::Available(
+                    json!({"ok": true, "output": output.stdout, "status": output.status}),
+                ),
+            );
+            if kind == ReportKind::Doctor {
+                diagnostics.push(diag(
+                    key.replace('.', "/"),
+                    DiagnosticSeverity::Pass,
+                    pass,
+                    vec![],
+                    None,
+                ));
+            }
+        }
+        Ok(output) => {
+            let message = format!(
+                "{program} {} exited {}: {}",
+                args.join(" "),
+                output.status,
+                output.stderr.trim()
+            );
+            observed.facts.insert(
+                key.to_owned(),
+                InspectionStatus::Error {
+                    message: message.clone(),
+                },
+            );
+            if kind == ReportKind::Doctor {
+                diagnostics.push(diag(
+                    key.replace('.', "/"),
+                    DiagnosticSeverity::Warn,
+                    fail,
+                    vec![message],
+                    None,
+                ));
+            }
+        }
+        Err(error) => {
+            observed.facts.insert(key.to_owned(), command_error(error));
+        }
+    }
+}
+
+fn inspect_ufw(
+    runner: &impl CommandAdapter,
+    desired: Option<&mistborn_bootstrap::config::DesiredState>,
+    observed: &mut ObservedState,
+    kind: ReportKind,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> bool {
+    let managed = desired.and_then(|state| state.firewall.as_ref());
+    let output = match runner.run("ufw", &["status", "verbose"]) {
+        Ok(output) if output.status == 0 => match parse_ufw(&output.stdout) {
+            Ok(parsed) => {
+                observed.facts.insert(
+                    "firewall.ufw".to_owned(),
+                    InspectionStatus::Available(json!({
+                        "active": parsed.active,
+                        "default_incoming": parsed.default_incoming,
+                        "output": output.stdout,
+                    })),
+                );
+                Some((parsed, output.stdout))
+            }
+            Err(error) => {
+                observed.facts.insert(
+                    "firewall.ufw".to_owned(),
+                    InspectionStatus::Error {
+                        message: error.clone(),
+                    },
+                );
+                diagnostics.push(diag(
+                    "inspection/firewall/ufw",
+                    DiagnosticSeverity::Warn,
+                    "UFW output could not be interpreted",
+                    vec![error],
+                    None,
+                ));
+                None
+            }
+        },
+        Ok(output) => {
+            let error = format!(
+                "ufw status verbose exited {}: {}",
+                output.status,
+                output.stderr.trim()
+            );
+            observed.facts.insert(
+                "firewall.ufw".to_owned(),
+                InspectionStatus::Error {
+                    message: error.clone(),
+                },
+            );
+            diagnostics.push(diag(
+                "inspection/firewall/ufw",
+                DiagnosticSeverity::Warn,
+                "UFW state could not be inspected",
+                vec![error],
+                None,
+            ));
+            None
+        }
+        Err(error) => {
+            let state = command_error(error);
+            let message = inspection_message(&state);
+            observed.facts.insert("firewall.ufw".to_owned(), state);
+            diagnostics.push(diag(
+                "inspection/firewall/ufw",
+                DiagnosticSeverity::Warn,
+                "UFW command is unavailable",
+                vec![message],
+                None,
+            ));
+            None
+        }
+    };
+
+    let Some((ufw, raw_status)) = output else {
+        return managed.is_some();
+    };
+    let Some(firewall) = managed else {
+        if kind == ReportKind::Doctor {
+            diagnostics.push(diag(
+                "security/ufw",
+                DiagnosticSeverity::Warn,
+                "UFW policy is unmanaged",
+                vec![],
+                None,
+            ));
+        }
+        observed.facts.insert(
+            "firewall.managed".to_owned(),
+            InspectionStatus::Available(json!({"managed": false})),
+        );
+        return false;
+    };
+    observed.facts.insert(
+        "firewall.managed".to_owned(),
+        InspectionStatus::Available(json!({"managed": true})),
+    );
+    let mut mismatch = Vec::new();
+    if ufw.active != firewall.enabled {
+        mismatch.push(format!(
+            "enabled: observed {}, desired {}",
+            ufw.active, firewall.enabled
+        ));
+    }
+    let desired_default = match firewall.default_incoming {
+        mistborn_bootstrap::config::IncomingPolicy::Allow => "allow",
+        mistborn_bootstrap::config::IncomingPolicy::Deny => "deny",
+        mistborn_bootstrap::config::IncomingPolicy::Reject => "reject",
+    };
+    if ufw.default_incoming != desired_default {
+        mismatch.push(format!(
+            "default incoming: observed {}, desired {desired_default}",
+            ufw.default_incoming
+        ));
+    }
+    let missing_ports = firewall
+        .public_tcp_ports
+        .iter()
+        .filter(|port| !ufw_allows_public_tcp(&raw_status, port.get()))
+        .map(|port| port.get())
+        .collect::<Vec<_>>();
+    if !missing_ports.is_empty() {
+        mismatch.push(format!(
+            "public TCP ports missing: {}",
+            missing_ports
+                .iter()
+                .map(u16::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    observed.facts.insert("firewall.public_tcp_ports".to_owned(), InspectionStatus::Available(json!({"desired": firewall.public_tcp_ports.iter().map(|port| port.get()).collect::<Vec<_>>(), "missing": missing_ports})));
+    let compliant = mismatch.is_empty();
+    observed.facts.insert(
+        "firewall.policy".to_owned(),
+        InspectionStatus::Available(json!({"compliant": compliant, "issues": mismatch})),
+    );
+    {
+        let mut diagnostic = diag(
+            "security/ufw",
+            if compliant {
+                DiagnosticSeverity::Pass
+            } else {
+                DiagnosticSeverity::Fail
+            },
+            if compliant {
+                "UFW matches desired firewall policy"
+            } else {
+                "UFW differs from desired firewall policy"
+            },
+            observed
+                .facts
+                .get("firewall.policy")
+                .and_then(|fact| match fact {
+                    InspectionStatus::Available(value) => {
+                        value.get("issues").and_then(Value::as_array)
+                    }
+                    _ => None,
+                })
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            if compliant {
+                None
+            } else {
+                Some("security/ufw".to_owned())
+            },
+        );
+        if !compliant {
+            diagnostic.risk = Some(RiskClass::Access);
+            diagnostic.confirmation_required = true;
+        }
+        diagnostics.push(diagnostic);
+    }
+
+    let Some(plex) = firewall.plex.as_ref() else {
+        observed.facts.insert(
+            "plex.ufw_profile".to_owned(),
+            InspectionStatus::Available(json!({"managed": false})),
+        );
+        return false;
+    };
+    let profile_path = Path::new("/etc/ufw/applications.d/plexmediaserver");
+    let profile = if plex.enabled {
+        match fs::read_to_string(profile_path) {
+            Ok(contents) => {
+                let profile_has_tcp_32400 = contents
+                    .lines()
+                    .any(|line| line.trim().eq_ignore_ascii_case("ports=32400/tcp"));
+                observed.facts.insert(
+                    "plex.ufw_profile".to_owned(),
+                    InspectionStatus::Available(
+                        json!({"managed": true, "exists": true, "path": profile_path, "profile_has_tcp_32400": profile_has_tcp_32400}),
+                    ),
+                );
+                Some(contents)
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                observed.facts.insert(
+                    "plex.ufw_profile".to_owned(),
+                    InspectionStatus::Available(
+                        json!({"managed": true, "exists": false, "path": profile_path}),
+                    ),
+                );
+                None
+            }
+            Err(error) => {
+                let message = format!("cannot read {}: {error}", profile_path.display());
+                observed.facts.insert(
+                    "plex.ufw_profile".to_owned(),
+                    InspectionStatus::Error {
+                        message: message.clone(),
+                    },
+                );
+                diagnostics.push(diag(
+                    "inspection/plex/ufw-profile",
+                    DiagnosticSeverity::Warn,
+                    "Plex UFW profile could not be inspected",
+                    vec![message],
+                    None,
+                ));
+                return true;
+            }
+        }
+    } else {
+        observed.facts.insert(
+            "plex.ufw_profile".to_owned(),
+            InspectionStatus::Available(
+                json!({"managed": true, "enabled": false, "profile_required": false}),
+            ),
+        );
+        None
+    };
+    let plex_issues = compare_plex_profile_and_rules(profile.as_deref(), &raw_status, plex);
+    let public = ufw_allows_public_tcp(&raw_status, 32400);
+    let plex_compliant = plex_issues.is_empty();
+    observed.facts.insert(
+        "plex.policy".to_owned(),
+        InspectionStatus::Available(json!({"compliant": plex_compliant, "issues": plex_issues})),
+    );
+    observed.facts.insert(
+        "plex.ufw_rules".to_owned(),
+        InspectionStatus::Available(json!({"public_tcp_32400": public, "issues": plex_issues})),
+    );
+    {
+        let mut diagnostic = diag(
+            "security/plex-firewall",
+            if plex_compliant {
+                DiagnosticSeverity::Pass
+            } else {
+                DiagnosticSeverity::Fail
+            },
+            if plex_compliant {
+                "Plex UFW profile and effective rules match desired policy"
+            } else {
+                "Plex UFW profile or effective rules drifted"
+            },
+            observed
+                .facts
+                .get("plex.policy")
+                .and_then(|fact| match fact {
+                    InspectionStatus::Available(value) => {
+                        value.get("issues").and_then(Value::as_array)
+                    }
+                    _ => None,
+                })
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            if plex_compliant {
+                None
+            } else {
+                Some("security/plex-firewall".to_owned())
+            },
+        );
+        if !plex_compliant {
+            diagnostic.risk = Some(RiskClass::Access);
+            diagnostic.confirmation_required = true;
+        }
+        diagnostics.push(diagnostic);
+    }
+    false
+}
+
+#[derive(Debug)]
+struct UfwState {
+    active: bool,
+    default_incoming: String,
+}
+
+fn parse_ufw(output: &str) -> Result<UfwState, String> {
+    let mut status = None;
+    let mut default = None;
+    let mut rules_header = false;
+    for line in output.lines() {
+        if let Some(value) = line.trim().strip_prefix("Status:") {
+            status = match value.trim() {
+                "active" => Some(true),
+                "inactive" => Some(false),
+                value => return Err(format!("unknown UFW status value: {value}")),
+            };
+        }
+        if let Some(value) = line.trim().strip_prefix("Default:") {
+            let incoming = value
+                .split(',')
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .next()
+                .unwrap_or_default();
+            if matches!(incoming, "allow" | "deny" | "reject") {
+                default = Some(incoming.to_owned());
+            }
+        }
+        if line.trim().starts_with("To") && line.contains("Action") && line.contains("From") {
+            rules_header = true;
+        }
+    }
+    if !rules_header {
+        return Err("ufw status output omitted the rules table header".to_owned());
+    }
+    Ok(UfwState {
+        active: status.ok_or_else(|| "ufw status output omitted Status".to_owned())?,
+        default_incoming: default
+            .ok_or_else(|| "ufw status output omitted or malformed Default policy".to_owned())?,
+    })
+}
+
+fn ufw_allows_public_tcp(output: &str, port: u16) -> bool {
+    let target = format!("{port}/tcp");
+    output.lines().any(|line| {
+        line.contains(&target)
+            && line.contains("ALLOW IN")
+            && line.contains("Anywhere")
+            && !line.contains("tailscale0")
+    })
+}
+
+fn profile_has_port(profile: &str, port: u16) -> bool {
+    let target = format!("{port}/tcp");
+    profile.lines().any(|line| {
+        line.split_once('=').is_some_and(|(key, value)| {
+            key.trim().eq_ignore_ascii_case("ports")
+                && value.split(',').any(|entry| entry.trim() == target)
+        })
+    })
+}
+
+fn compare_plex_profile_and_rules(
+    profile: Option<&str>,
+    status: &str,
+    plex: &mistborn_bootstrap::config::PlexFirewallConfig,
+) -> Vec<String> {
+    let mut issues = Vec::new();
+    if !plex.enabled {
+        if status
+            .lines()
+            .any(|line| line.contains("32400/tcp") && line.contains("ALLOW IN"))
+        {
+            issues
+                .push("Plex firewall is disabled but TCP 32400 still has an allow rule".to_owned());
+        }
+        return issues;
+    }
+    match profile {
+        None => issues.push("Plex UFW profile is missing".to_owned()),
+        Some(contents) if !profile_has_port(contents, 32400) => {
+            issues.push("Plex UFW profile does not declare TCP 32400".to_owned())
+        }
+        Some(_) => {}
+    }
+    let public = ufw_allows_public_tcp(status, 32400);
+    if plex.public_remote_access && !public {
+        issues.push("public TCP 32400 rule is missing".to_owned());
+    }
+    if !plex.public_remote_access && public {
+        issues.push("TCP 32400 is publicly allowed although public access is disabled".to_owned());
+    }
+    if let Some(cidr) = &plex.lan_cidr
+        && !status.lines().any(|line| {
+            line.contains("32400/tcp") && line.contains(cidr.as_str()) && line.contains("ALLOW IN")
+        })
+    {
+        issues.push(format!("LAN rule for {} is missing", cidr.as_str()));
+    }
+    if plex.tailscale
+        && !status.lines().any(|line| {
+            line.contains("32400/tcp") && line.contains("tailscale0") && line.contains("ALLOW IN")
+        })
+    {
+        issues.push("Tailscale interface rule for TCP 32400 is missing".to_owned());
+    }
+    issues
+}
+
+fn inspection_message(status: &InspectionStatus<Value>) -> String {
+    match status {
+        InspectionStatus::Unavailable { reason } => reason.clone(),
+        InspectionStatus::Error { message } => message.clone(),
+        InspectionStatus::Available(_) => "available".to_owned(),
+    }
+}
+
+fn add_inspection_diagnostics(observed: &ObservedState, diagnostics: &mut Vec<Diagnostic>) {
+    for (fact_id, state) in &observed.facts {
+        let message = match state {
+            InspectionStatus::Unavailable { reason } => {
+                Some(format!("inspection unavailable: {reason}"))
+            }
+            InspectionStatus::Error { message } => Some(format!("inspection error: {message}")),
+            InspectionStatus::Available(_) => None,
+        };
+        let Some(message) = message else { continue };
+        let id = format!("inspection/{}", fact_id.replace('.', "/"));
+        if diagnostics
+            .iter()
+            .any(|item| item.id == id || item.id == "config/read" && fact_id == "desired_config")
+        {
+            continue;
+        }
+        diagnostics.push(diag(
+            id,
+            DiagnosticSeverity::Warn,
+            format!("Could not inspect {fact_id}"),
+            vec![message],
+            None,
+        ));
+    }
+}
+
+fn inspect_tailscale(
+    runner: &impl CommandAdapter,
+    desired: Option<&mistborn_bootstrap::config::DesiredState>,
+    observed: &mut ObservedState,
+    kind: ReportKind,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> bool {
+    match runner.run("tailscale", &["status", "--json"]) {
+        Ok(output) if output.status == 0 => match serde_json::from_str::<Value>(&output.stdout) {
+            Ok(value) => {
+                observed.facts.insert(
+                    "tailscale.status".to_owned(),
+                    InspectionStatus::Available(value),
+                );
+            }
+            Err(error) => {
+                observed.facts.insert(
+                    "tailscale.status".to_owned(),
+                    InspectionStatus::Error {
+                        message: format!("tailscale status returned malformed JSON: {error}"),
+                    },
+                );
+            }
+        },
+        Ok(output) => {
+            observed.facts.insert(
+                "tailscale.status".to_owned(),
+                InspectionStatus::Error {
+                    message: format!(
+                        "tailscale status exited {}: {}",
+                        output.status,
+                        output.stderr.trim()
+                    ),
+                },
+            );
+        }
+        Err(error) => {
+            observed
+                .facts
+                .insert("tailscale.status".to_owned(), command_error(error));
+        }
+    }
+    let tailscale = desired.and_then(|state| state.tailscale.as_ref());
+    let prefs_state = match runner.run("tailscale", &["debug", "prefs"]) {
+        Ok(output) if output.status == 0 => match serde_json::from_str::<Value>(&output.stdout) {
+            Ok(value) => {
+                observed.facts.insert(
+                    "tailscale.preferences".to_owned(),
+                    InspectionStatus::Available(value.clone()),
+                );
+                Some(value)
+            }
+            Err(error) => {
+                observed.facts.insert(
+                    "tailscale.preferences".to_owned(),
+                    InspectionStatus::Error {
+                        message: format!("tailscale debug prefs returned malformed JSON: {error}"),
+                    },
+                );
+                None
+            }
+        },
+        Ok(output) => {
+            observed.facts.insert(
+                "tailscale.preferences".to_owned(),
+                InspectionStatus::Error {
+                    message: format!(
+                        "tailscale debug prefs exited {}: {}",
+                        output.status,
+                        output.stderr.trim()
+                    ),
+                },
+            );
+            None
+        }
+        Err(error) => {
+            observed
+                .facts
+                .insert("tailscale.preferences".to_owned(), command_error(error));
+            None
+        }
+    };
+    let status_incomplete = tailscale.is_some()
+        && !matches!(
+            observed.facts.get("tailscale.status"),
+            Some(InspectionStatus::Available(_))
+        );
+    let Some(tailscale) = tailscale else {
+        if kind == ReportKind::Doctor {
+            diagnostics.push(diag(
+                "security/tailscale",
+                DiagnosticSeverity::Warn,
+                "Tailscale policy is unmanaged",
+                vec![],
+                None,
+            ));
+        }
+        return false;
+    };
+    let Some(prefs) = prefs_state else {
+        if kind == ReportKind::Doctor {
+            diagnostics.push(diag(
+                "inspection/tailscale/preferences",
+                DiagnosticSeverity::Warn,
+                "Managed Tailscale policy could not be inspected",
+                vec![
+                    observed
+                        .facts
+                        .get("tailscale.preferences")
+                        .map(inspection_message)
+                        .unwrap_or_default(),
+                ],
+                None,
+            ));
+        }
+        return true;
+    };
+    let run_ssh = prefs.get("RunSSH").and_then(Value::as_bool);
+    let observed_exit_routes =
+        prefs
+            .get("AdvertiseRoutes")
+            .and_then(Value::as_array)
+            .map(|routes| {
+                ["0.0.0.0/0", "::/0"]
+                    .iter()
+                    .filter(|wanted| routes.iter().any(|route| route.as_str() == Some(**wanted)))
+                    .map(|route| (*route).to_owned())
+                    .collect::<Vec<_>>()
+            });
+    let desired_exit_routes = if tailscale.advertise_exit_node {
+        vec!["0.0.0.0/0".to_owned(), "::/0".to_owned()]
+    } else {
+        Vec::new()
+    };
+    let auto_update = prefs
+        .get("AutoUpdate")
+        .and_then(|value| value.get("Check"))
+        .and_then(Value::as_bool);
+    let mut errors = Vec::new();
+    let mut drift = Vec::new();
+    compare_bool(&mut errors, &mut drift, "RunSSH", run_ssh, tailscale.ssh);
+    match observed_exit_routes.as_ref() {
+        None => errors.push("AdvertiseRoutes is missing or invalid".to_owned()),
+        Some(routes) if routes != &desired_exit_routes => drift.push(format!(
+            "AdvertiseRoutes(exit node): observed {routes:?}, desired {desired_exit_routes:?}"
+        )),
+        Some(_) => {}
+    }
+    compare_bool(
+        &mut errors,
+        &mut drift,
+        "AutoUpdate.Check",
+        auto_update,
+        tailscale.auto_update,
+    );
+    let policy_compliant = errors.is_empty() && drift.is_empty();
+    observed.facts.insert("tailscale.policy".to_owned(), if errors.is_empty() { InspectionStatus::Available(json!({"run_ssh": run_ssh, "advertise_exit_node": observed_exit_routes.as_ref().is_some_and(|routes| !routes.is_empty()), "advertise_routes": observed_exit_routes, "desired_advertise_routes": desired_exit_routes, "auto_update": auto_update, "compliant": policy_compliant})) } else { InspectionStatus::Error { message: errors.join("; ") } });
+    {
+        let mut diagnostic = diag(
+            "security/tailscale",
+            if !errors.is_empty() {
+                DiagnosticSeverity::Warn
+            } else if drift.is_empty() {
+                DiagnosticSeverity::Pass
+            } else {
+                DiagnosticSeverity::Fail
+            },
+            if !errors.is_empty() {
+                "Tailscale preferences are incomplete"
+            } else if drift.is_empty() {
+                "Tailscale preferences match desired policy"
+            } else {
+                "Tailscale preferences drifted from desired policy"
+            },
+            if errors.is_empty() {
+                drift.clone()
+            } else {
+                errors.clone()
+            },
+            if errors.is_empty() && !drift.is_empty() {
+                Some("security/tailscale".to_owned())
+            } else {
+                None
+            },
+        );
+        if !drift.is_empty() && errors.is_empty() {
+            diagnostic.risk = Some(RiskClass::Access);
+            diagnostic.confirmation_required = true;
+        }
+        diagnostics.push(diagnostic);
+    }
+    !errors.is_empty() || status_incomplete
+}
+
+fn compare_bool(
+    errors: &mut Vec<String>,
+    drift: &mut Vec<String>,
+    name: &str,
+    observed: Option<bool>,
+    desired: bool,
+) {
+    match observed {
+        None => errors.push(format!("missing or invalid {name}")),
+        Some(value) if value != desired => {
+            drift.push(format!("{name}: observed {value}, desired {desired}"))
+        }
+        Some(_) => {}
+    }
+}
+
+fn compare_ssh_policy(
+    observed: &Value,
+    desired: &mistborn_bootstrap::config::SshConfig,
+) -> Diagnostic {
+    let mut observed_ports = observed
+        .get("ports")
+        .and_then(Value::as_array)
+        .and_then(|ports| ports.iter().map(Value::as_u64).collect::<Option<Vec<_>>>());
+    if let Some(ports) = observed_ports.as_mut() {
+        ports.sort_unstable();
+    }
+    let expected_ports = vec![u64::from(desired.port.get())];
+    let compliant = observed_ports.as_ref() == Some(&expected_ports)
+        && observed
+            .get("passwordauthentication")
+            .and_then(Value::as_str)
+            .is_some_and(|value| {
+                value.eq_ignore_ascii_case(if desired.password_authentication {
+                    "yes"
+                } else {
+                    "no"
+                })
+            })
+        && observed
+            .get("permitrootlogin")
+            .and_then(Value::as_str)
+            .is_some_and(|value| {
+                value.eq_ignore_ascii_case(if desired.root_login { "yes" } else { "no" })
+            });
+    let mut diagnostic = diag(
+        "security/ssh",
+        if compliant {
+            DiagnosticSeverity::Pass
+        } else {
+            DiagnosticSeverity::Fail
+        },
+        if compliant {
+            "SSH policy matches desired configuration"
+        } else {
+            "SSH policy drifted from desired configuration"
+        },
+        vec![observed.to_string()],
+        if compliant {
+            None
+        } else {
+            Some("security/ssh".to_owned())
+        },
+    );
+    if !compliant {
+        diagnostic.risk = Some(RiskClass::Access);
+        diagnostic.confirmation_required = true;
+    }
+    diagnostic
+}
+
+fn command_error(error: String) -> InspectionStatus<Value> {
+    if error.contains("No such file") || error.contains("not found") {
+        InspectionStatus::Unavailable { reason: error }
+    } else {
+        InspectionStatus::Error { message: error }
+    }
+}
+
+fn parse_systemctl_active(output: &CommandOutput) -> Result<bool, String> {
+    match (output.status, output.stdout.trim()) {
+        (0, "active") => Ok(true),
+        (3, "inactive" | "failed") => Ok(false),
+        _ => Err(format!(
+            "unexpected exit status {} or state {:?}",
+            output.status,
+            output.stdout.trim()
+        )),
+    }
+}
+
+fn find_executable(name: &str) -> Option<PathBuf> {
+    let paths = env::var_os("PATH")?;
+    env::split_paths(&paths)
+        .map(|directory| directory.join(name))
+        .find(|candidate| {
+            let Ok(metadata) = fs::metadata(candidate) else {
+                return false;
+            };
+            if !metadata.is_file() {
+                return false;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            {
+                true
+            }
+        })
+}
+
+fn diag(
+    id: impl Into<String>,
+    severity: DiagnosticSeverity,
+    summary: impl Into<String>,
+    evidence: Vec<String>,
+    remediation_id: Option<String>,
+) -> Diagnostic {
+    Diagnostic {
+        id: id.into(),
+        severity,
+        summary: summary.into(),
+        evidence,
+        remediation_id,
+        risk: None,
+        confirmation_required: false,
+    }
+}
+
+fn parse_sshd(output: &str) -> Result<Value, String> {
+    let mut values = BTreeMap::<String, Value>::new();
+    let mut ports = Vec::new();
+    for line in output.lines() {
+        if let Some((key, value)) = line.split_once(' ') {
+            let value = value.trim();
+            match key {
+                "port" => ports.push(
+                    value
+                        .parse::<u16>()
+                        .map_err(|_| format!("sshd -T output has invalid port {value:?}"))?,
+                ),
+                "passwordauthentication" | "permitrootlogin" => {
+                    values.insert(key.to_owned(), json!(value));
+                }
+                _ => {}
+            }
+        }
+    }
+    if ports.is_empty() {
+        return Err("sshd -T output missing port".to_owned());
+    }
+    values.insert("ports".to_owned(), json!(ports));
+    for key in ["passwordauthentication", "permitrootlogin"] {
+        if !values.contains_key(key) {
+            return Err(format!("sshd -T output missing {key}"));
+        }
+    }
+    serde_json::to_value(values).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct FixtureRunner(HashMap<String, Result<CommandOutput, String>>);
+    impl CommandAdapter for FixtureRunner {
+        fn run(&self, program: &str, args: &[&str]) -> Result<CommandOutput, String> {
+            self.0
+                .get(&format!("{program} {}", args.join(" ")))
+                .cloned()
+                .unwrap_or_else(|| Err("No such file or directory".to_owned()))
+        }
+    }
+
+    fn output(stdout: &str, status: i32) -> Result<CommandOutput, String> {
+        Ok(CommandOutput {
+            status,
+            stdout: stdout.to_owned(),
+            stderr: String::new(),
+        })
+    }
+
+    #[test]
+    fn json_report_contract_has_stable_envelope_and_counts() {
+        let observed = ObservedState {
+            facts: BTreeMap::from([(
+                "inspection.sample".to_owned(),
+                InspectionStatus::Error {
+                    message: "fixture error".to_owned(),
+                },
+            )]),
+        };
+        let diagnostics = vec![
+            diag("ok", DiagnosticSeverity::Pass, "ok", vec![], None),
+            diag("warning", DiagnosticSeverity::Warn, "warning", vec![], None),
+            diag("drift", DiagnosticSeverity::Fail, "drift", vec![], None),
+        ];
+        let summary = summarize(&observed, &diagnostics);
+        assert_eq!(summary.pass_count, 1);
+        assert_eq!(summary.warn_count, 1);
+        assert_eq!(summary.fail_count, 1);
+        assert_eq!(summary.error_count, 1);
+        assert_eq!(summary.drift_count, 1);
+
+        let report = Report {
+            schema_version: 1,
+            command: "doctor",
+            version: "v1.2.3".to_owned(),
+            config: ConfigSummary {
+                path: "/etc/mistborn/config.toml",
+                schema_version: Some(1),
+                status: "loaded",
+            },
+            summary,
+            observed,
+            diagnostics,
+            inspection_incomplete: false,
+        };
+        let value = serde_json::to_value(report).unwrap();
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["command"], "doctor");
+        assert_eq!(value["config"]["path"], "/etc/mistborn/config.toml");
+        assert_eq!(value["config"]["schema_version"], 1);
+        assert_eq!(value["config"]["status"], "loaded");
+        assert_eq!(value["summary"]["drift_count"], 1);
+        assert!(value["observed"].is_object());
+    }
+
+    #[test]
+    fn package_lookup_does_not_spawn_a_shell() {
+        assert!(find_executable("mistborn-nonexistent-package-test").is_none());
+    }
+
+    #[test]
+    fn command_failure_is_observed_as_unavailable_or_error() {
+        let mut fixtures = HashMap::new();
+        fixtures.insert(
+            "systemctl is-active docker".to_owned(),
+            output("inactive\n", 3),
+        );
+        let report = inspect(ReportKind::Doctor, &FixtureRunner(fixtures));
+        assert!(
+            matches!(report.observed.facts.get("service.docker"), Some(InspectionStatus::Available(value)) if value["active"] == false)
+        );
+    }
+
+    #[test]
+    fn systemctl_inactive_state_requires_expected_exit_code_and_text() {
+        assert_eq!(
+            parse_systemctl_active(&CommandOutput {
+                status: 3,
+                stdout: "inactive\n".to_owned(),
+                stderr: String::new()
+            }),
+            Ok(false)
+        );
+        assert_eq!(
+            parse_systemctl_active(&CommandOutput {
+                status: 0,
+                stdout: "active\n".to_owned(),
+                stderr: String::new()
+            }),
+            Ok(true)
+        );
+        assert!(
+            parse_systemctl_active(&CommandOutput {
+                status: 4,
+                stdout: "inactive\n".to_owned(),
+                stderr: String::new()
+            })
+            .is_err()
+        );
+        assert!(
+            parse_systemctl_active(&CommandOutput {
+                status: 3,
+                stdout: "garbage\n".to_owned(),
+                stderr: String::new()
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn ufw_parser_rejects_unknown_or_incomplete_output() {
+        assert!(parse_ufw("some unrelated command output\n").is_err());
+        assert!(
+            parse_ufw(
+                "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn managed_ufw_compares_enabled_default_and_required_public_ports() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\npublic_tcp_ports=[80,443]\n",
+        ).unwrap();
+        let fixtures = FixtureRunner(HashMap::from([(
+            "ufw status verbose".to_owned(),
+            output(
+                "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n80/tcp ALLOW IN Anywhere\n443/tcp ALLOW IN Anywhere\n",
+                0,
+            ),
+        )]));
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_ufw(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Pass);
+
+        let fixtures = FixtureRunner(HashMap::from([(
+            "ufw status verbose".to_owned(),
+            output(
+                "Status: inactive\nDefault: allow (incoming), allow (outgoing), disabled (routed)\nTo Action From\n-- ------ ----\n",
+                0,
+            ),
+        )]));
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_ufw(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Fail);
+        assert_eq!(diagnostics[0].risk, Some(RiskClass::Access));
+        assert!(diagnostics[0].confirmation_required);
+    }
+
+    #[test]
+    fn optional_ufw_unavailability_does_not_mark_the_report_incomplete() {
+        let fixtures = FixtureRunner(HashMap::new());
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_ufw(
+            &fixtures,
+            None,
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert!(matches!(
+            observed.facts.get("firewall.ufw"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn plex_effective_profile_and_rules_are_compared() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=true\npublic_remote_access=true\nlan_cidr='192.168.1.0/24'\ntailscale=true\n",
+        ).unwrap();
+        let plex = desired.firewall.unwrap().plex.unwrap();
+        let profile = "[Plex]\ntitle=Plex\nports=32400/tcp\n";
+        let status = "32400/tcp ALLOW IN Anywhere\n32400/tcp ALLOW IN 192.168.1.0/24\n32400/tcp on tailscale0 ALLOW IN Anywhere\n";
+        assert!(compare_plex_profile_and_rules(Some(profile), status, &plex).is_empty());
+        assert!(
+            !compare_plex_profile_and_rules(Some(profile), "32400/tcp ALLOW IN Anywhere\n", &plex)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn disabled_plex_rejects_any_allow_rule() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[firewall]\nenabled=true\ndefault_incoming='deny'\n[firewall.plex]\nenabled=false\npublic_remote_access=false\ntailscale=false\n",
+        ).unwrap();
+        let plex = desired.firewall.unwrap().plex.unwrap();
+        assert!(compare_plex_profile_and_rules(None, "", &plex).is_empty());
+        assert!(
+            !compare_plex_profile_and_rules(None, "32400/tcp ALLOW IN Anywhere\n", &plex)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn ssh_access_drift_requires_explicit_confirmation() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=22\npassword_authentication=false\nroot_login=false\n",
+        ).unwrap();
+        let diagnostic = compare_ssh_policy(
+            &json!({"ports":[2222],"passwordauthentication":"yes","permitrootlogin":"yes"}),
+            desired.ssh.as_ref().unwrap(),
+        );
+        assert_eq!(diagnostic.severity, DiagnosticSeverity::Fail);
+        assert_eq!(diagnostic.remediation_id.as_deref(), Some("security/ssh"));
+        assert_eq!(diagnostic.risk, Some(RiskClass::Access));
+        assert!(diagnostic.confirmation_required);
+    }
+
+    #[test]
+    fn tailscale_interface_rule_is_not_mistaken_for_a_public_rule() {
+        assert!(!ufw_allows_public_tcp(
+            "32400/tcp on tailscale0 ALLOW IN Anywhere\\n",
+            32400
+        ));
+    }
+
+    #[test]
+    fn unavailable_unmanaged_tailscale_does_not_make_inspection_incomplete() {
+        let fixtures = FixtureRunner(HashMap::new());
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_tailscale(
+            &fixtures,
+            None,
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert!(diagnostics.iter().any(
+            |item| item.id == "security/tailscale" && item.severity == DiagnosticSeverity::Warn
+        ));
+    }
+
+    #[test]
+    fn unavailable_managed_tailscale_is_incomplete_and_reported() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[tailscale]\nssh=true\nadvertise_exit_node=false\nauto_update=true\n",
+        ).unwrap();
+        let fixtures = FixtureRunner(HashMap::new());
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(inspect_tailscale(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.id == "inspection/tailscale/preferences")
+        );
+    }
+
+    #[test]
+    fn all_unavailable_facts_receive_structured_diagnostics() {
+        let observed = ObservedState {
+            facts: BTreeMap::from([(
+                "tailscale.preferences".to_owned(),
+                InspectionStatus::Unavailable {
+                    reason: "missing".to_owned(),
+                },
+            )]),
+        };
+        let mut diagnostics = Vec::new();
+        add_inspection_diagnostics(&observed, &mut diagnostics);
+        assert_eq!(diagnostics[0].id, "inspection/tailscale/preferences");
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warn);
+    }
+
+    #[test]
+    fn malformed_ssh_output_cannot_become_a_pass() {
+        let result = parse_sshd("port 22\npasswordauthentication no\n");
+        assert!(result.unwrap_err().contains("permitrootlogin"));
+    }
+
+    #[test]
+    fn ssh_policy_parser_extracts_only_supported_fields() {
+        let parsed = parse_sshd(
+            "port 2222\npasswordauthentication yes\npermitrootlogin prohibit-password\n",
+        )
+        .unwrap();
+        assert_eq!(parsed["ports"], json!([2222]));
+        assert_eq!(parsed["passwordauthentication"], "yes");
+    }
+
+    #[test]
+    fn ssh_policy_preserves_all_effective_ports_and_flags_extras_as_drift() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[ssh]\nport=22\npassword_authentication=false\nroot_login=false\n",
+        )
+        .unwrap();
+        let parsed =
+            parse_sshd("port 22\nport 2222\npasswordauthentication no\npermitrootlogin no\n")
+                .unwrap();
+        assert_eq!(parsed["ports"], json!([22, 2222]));
+        assert_eq!(
+            compare_ssh_policy(&parsed, desired.ssh.as_ref().unwrap()).severity,
+            DiagnosticSeverity::Fail
+        );
+        let duplicate_ports =
+            parse_sshd("port 22\nport 22\npasswordauthentication no\npermitrootlogin no\n")
+                .unwrap();
+        assert_eq!(duplicate_ports["ports"], json!([22, 22]));
+        assert_eq!(
+            compare_ssh_policy(&duplicate_ports, desired.ssh.as_ref().unwrap()).severity,
+            DiagnosticSeverity::Fail
+        );
+    }
+
+    #[test]
+    fn malformed_tailscale_json_is_an_inspection_error() {
+        let mut fixtures = HashMap::new();
+        fixtures.insert("tailscale status --json".to_owned(), output("not-json", 0));
+        let report = inspect(ReportKind::Doctor, &FixtureRunner(fixtures));
+        assert!(matches!(
+            report.observed.facts.get("tailscale.status"),
+            Some(InspectionStatus::Error { message }) if message.contains("malformed JSON")
+        ));
+    }
+
+    #[test]
+    fn managed_tailscale_preferences_are_compared_field_by_field() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[tailscale]\nssh=true\nadvertise_exit_node=false\nauto_update=true\n",
+        ).unwrap();
+        let fixtures = FixtureRunner(HashMap::from([
+            (
+                "tailscale status --json".to_owned(),
+                output("{\"BackendState\":\"Running\"}", 0),
+            ),
+            (
+                "tailscale debug prefs".to_owned(),
+                output(
+                    "{\"RunSSH\":true,\"AdvertiseRoutes\":[],\"AutoUpdate\":{\"Check\":true}}",
+                    0,
+                ),
+            ),
+        ]));
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_tailscale(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Pass);
+
+        let fixtures = FixtureRunner(HashMap::from([
+            (
+                "tailscale status --json".to_owned(),
+                output("{\"BackendState\":\"Running\"}", 0),
+            ),
+            (
+                "tailscale debug prefs".to_owned(),
+                output(
+                    "{\"RunSSH\":false,\"AdvertiseRoutes\":[\"0.0.0.0/0\"],\"AutoUpdate\":{\"Check\":false}}",
+                    0,
+                ),
+            ),
+        ]));
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(!inspect_tailscale(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics
+        ));
+        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Fail);
+        assert!(
+            diagnostics[0]
+                .evidence
+                .iter()
+                .any(|item| item.contains("AdvertiseRoutes(exit node)"))
+        );
+        assert_eq!(diagnostics[0].risk, Some(RiskClass::Access));
+        assert!(diagnostics[0].confirmation_required);
+    }
+
+    #[test]
+    fn docker_inspection_never_invokes_daemon_connecting_commands() {
+        use std::sync::Mutex;
+        struct RecordingRunner(Mutex<Vec<String>>);
+        impl CommandAdapter for RecordingRunner {
+            fn run(&self, program: &str, args: &[&str]) -> Result<CommandOutput, String> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(format!("{program} {}", args.join(" ")));
+                Err("No such file or directory".to_owned())
+            }
+        }
+        let runner = RecordingRunner(Mutex::new(Vec::new()));
+        let _ = inspect(ReportKind::Doctor, &runner);
+        let calls = runner.0.lock().unwrap();
+        assert!(!calls.iter().any(|call| call == "docker info"));
+        assert!(!calls.iter().any(|call| call.starts_with("sh -c")));
+    }
+}

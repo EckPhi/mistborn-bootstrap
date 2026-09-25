@@ -1,5 +1,6 @@
 mod command_dashboard;
 mod dashboard;
+mod host_diagnostics;
 mod input;
 mod plan;
 mod progress;
@@ -737,6 +738,17 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
             usage()
         ));
     }
+    let mut command_arguments = arguments[3..].to_vec();
+    if command_arguments
+        .first()
+        .is_some_and(|command| matches!(command.as_str(), "status" | "doctor"))
+        && !command_arguments.iter().any(|arg| arg == "--legacy")
+    {
+        return execute_read_only_host_command(&command_arguments);
+    }
+    if command_arguments.iter().any(|arg| arg == "--legacy") {
+        command_arguments.retain(|arg| arg != "--legacy");
+    }
     let script = PathBuf::from(&arguments[2]);
     if !script.is_file() {
         return Err(format!(
@@ -744,7 +756,6 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
             script.display()
         ));
     }
-    let mut command_arguments = arguments[3..].to_vec();
     let use_dashboard = interactive_terminal();
     let shows_menu = command_arguments.is_empty()
         || command_arguments
@@ -818,6 +829,154 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
     }
 }
 
+fn execute_read_only_host_command(arguments: &[String]) -> Result<(), String> {
+    let command = arguments.first().map(String::as_str).unwrap_or_default();
+    let kind = if command == "status" {
+        host_diagnostics::ReportKind::Status
+    } else {
+        host_diagnostics::ReportKind::Doctor
+    };
+    let mut format = "text";
+    let mut index = 1;
+    while index < arguments.len() {
+        match arguments[index].as_str() {
+            "--format" if index + 1 < arguments.len() => {
+                format = arguments[index + 1].as_str();
+                index += 2;
+            }
+            "--format" => return Err(inspection_cli_error("--format requires text or json")),
+            "--legacy" => {
+                return Err(inspection_cli_error(
+                    "internal error: legacy command was routed to Rust",
+                ));
+            }
+            option => {
+                return Err(inspection_cli_error(&format!(
+                    "unknown {command} option: {option}"
+                )));
+            }
+        }
+    }
+    if !matches!(format, "text" | "json") {
+        return Err(inspection_cli_error(&format!(
+            "unsupported output format: {format}"
+        )));
+    }
+    let report = host_diagnostics::inspect(kind, &host_diagnostics::SystemCommands);
+    if format == "json" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|error| inspection_cli_error(&error.to_string()))?
+        );
+    } else if command == "status" {
+        println!("Mistborn {}", report.version);
+        println!("{}", status_config_line(&report.config));
+        if let Some(host_diagnostics::InspectionStatus::Available(versions)) =
+            report.observed.facts.get("versions")
+        {
+            println!("Components");
+            if let Some(versions) = versions.as_object() {
+                for (name, version) in versions {
+                    println!(
+                        "  {name}: {}",
+                        version
+                            .as_str()
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("installed; version unavailable")
+                    );
+                }
+            }
+        }
+        println!("Services");
+        for service in ["docker", "tailscaled", "fail2ban"] {
+            match report.observed.facts.get(&format!("service.{service}")) {
+                Some(host_diagnostics::InspectionStatus::Available(value)) => println!(
+                    "  {service}: {}",
+                    if value["active"] == true {
+                        "active"
+                    } else {
+                        "inactive"
+                    }
+                ),
+                Some(host_diagnostics::InspectionStatus::Unavailable { .. }) => {
+                    println!("  {service}: systemd unavailable")
+                }
+                Some(host_diagnostics::InspectionStatus::Error { message }) => {
+                    println!("  {service}: inspection error ({message})")
+                }
+                _ => println!("  {service}: unknown"),
+            }
+        }
+        println!("{}", status_drift_line(&report.summary));
+    } else {
+        for diagnostic in &report.diagnostics {
+            println!(
+                "{:4}  {}",
+                format!("{:?}", diagnostic.severity).to_uppercase(),
+                diagnostic.summary
+            );
+            if !diagnostic.evidence.is_empty() {
+                println!("      evidence: {}", diagnostic.evidence.join("; "));
+            }
+            if let Some(remediation) = &diagnostic.remediation_id {
+                println!("      remediation: {remediation}");
+            }
+            if let Some(note) = confirmation_note(diagnostic) {
+                println!("      {note}");
+            }
+        }
+        for (key, state) in &report.observed.facts {
+            match state {
+                host_diagnostics::InspectionStatus::Unavailable { reason } => {
+                    println!("WARN  {key}: unavailable ({reason})")
+                }
+                host_diagnostics::InspectionStatus::Error { message } => {
+                    println!("WARN  {key}: inspection error ({message})")
+                }
+                _ => {}
+            }
+        }
+    }
+    if report
+        .diagnostics
+        .iter()
+        .any(|item| item.severity == mistborn_bootstrap::domain::DiagnosticSeverity::Fail)
+    {
+        return Err(format!("mistborn {command} found host drift"));
+    }
+    if report.inspection_incomplete {
+        return Err(format!(
+            "exit-code-2: mistborn {command} could not inspect all host facts"
+        ));
+    }
+    Ok(())
+}
+
+fn inspection_cli_error(message: &str) -> String {
+    format!("exit-code-2: {message}")
+}
+
+fn status_drift_line(summary: &host_diagnostics::ReportSummary) -> String {
+    format!("Drift count: {}", summary.drift_count)
+}
+
+fn status_config_line(config: &host_diagnostics::ConfigSummary) -> String {
+    match config.schema_version {
+        Some(version) => format!(
+            "Config: {} (schema v{version}; {})",
+            config.path, config.status
+        ),
+        None => format!("Config: {} ({})", config.path, config.status),
+    }
+}
+
+fn confirmation_note(diagnostic: &mistborn_bootstrap::domain::Diagnostic) -> Option<&'static str> {
+    diagnostic
+        .confirmation_required
+        .then_some("confirmation required")
+}
+
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().collect();
     let result = if arguments.get(1).is_some_and(|argument| argument == "host") {
@@ -833,8 +992,13 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("mistborn-bootstrap: {error}");
-            ExitCode::FAILURE
+            if let Some(message) = error.strip_prefix("exit-code-2: ") {
+                eprintln!("mistborn-bootstrap: {message}");
+                ExitCode::from(2)
+            } else {
+                eprintln!("mistborn-bootstrap: {error}");
+                ExitCode::FAILURE
+            }
         }
     }
 }
@@ -842,11 +1006,78 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temporary_directory() -> PathBuf {
-        let path = env::temp_dir().join(format!("mistborn-bootstrap-test-{}", run_id()));
+        let path = env::temp_dir().join(format!(
+            "mistborn-bootstrap-test-{}-{}",
+            run_id(),
+            TEMP_DIRECTORY_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn status_routes_to_rust_before_legacy_script_lookup() {
+        let error = execute_host(&[
+            "host".to_owned(),
+            "--script".to_owned(),
+            "/missing/legacy/script".to_owned(),
+            "status".to_owned(),
+            "--format".to_owned(),
+            "yaml".to_owned(),
+        ])
+        .unwrap_err();
+        assert!(error.contains("exit-code-2: unsupported output format"));
+        assert!(!error.contains("host command script not found"));
+    }
+
+    #[test]
+    fn read_only_cli_argument_errors_use_exit_code_two() {
+        let error = execute_host(&[
+            "host".to_owned(),
+            "--script".to_owned(),
+            "/missing/legacy/script".to_owned(),
+            "doctor".to_owned(),
+            "--unknown".to_owned(),
+        ])
+        .unwrap_err();
+        assert!(error.starts_with("exit-code-2: unknown doctor option"));
+    }
+
+    #[test]
+    fn doctor_confirmation_note_and_status_drift_line_are_stable() {
+        let diagnostic = mistborn_bootstrap::domain::Diagnostic {
+            id: "security/ssh".to_owned(),
+            severity: mistborn_bootstrap::domain::DiagnosticSeverity::Fail,
+            summary: "SSH drift".to_owned(),
+            evidence: vec![],
+            remediation_id: Some("security/ssh".to_owned()),
+            risk: Some(mistborn_bootstrap::domain::RiskClass::Access),
+            confirmation_required: true,
+        };
+        assert_eq!(
+            confirmation_note(&diagnostic),
+            Some("confirmation required")
+        );
+        assert_eq!(
+            status_drift_line(&host_diagnostics::ReportSummary {
+                drift_count: 3,
+                ..Default::default()
+            }),
+            "Drift count: 3"
+        );
+        assert_eq!(
+            status_config_line(&host_diagnostics::ConfigSummary {
+                path: "/etc/mistborn/config.toml",
+                schema_version: Some(1),
+                status: "loaded",
+            }),
+            "Config: /etc/mistborn/config.toml (schema v1; loaded)"
+        );
     }
 
     #[test]

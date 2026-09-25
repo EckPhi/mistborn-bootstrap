@@ -29,6 +29,10 @@ pub struct Diagnostic {
     pub summary: String,
     pub evidence: Vec<String>,
     pub remediation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk: Option<RiskClass>,
+    #[serde(default)]
+    pub confirmation_required: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
