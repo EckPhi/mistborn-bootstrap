@@ -1369,7 +1369,9 @@ fn inspect_tailscale(
         for fact in [
             "tailscale.status",
             "tailscale.preferences",
-            "tailscale.policy",
+            "tailscale.ssh",
+            "tailscale.exit_node",
+            "tailscale.auto_update",
         ] {
             observed.facts.insert(
                 fact.to_owned(),
@@ -1391,14 +1393,35 @@ fn inspect_tailscale(
         }
         return false;
     }
-    match runner.run("tailscale", &["status", "--json"]) {
+    let tailscale_running = match runner.run("tailscale", &["status", "--json"]) {
         Ok(output) if output.status == 0 => match serde_json::from_str::<Value>(&output.stdout) {
-            Ok(value) => {
-                observed.facts.insert(
-                    "tailscale.status".to_owned(),
-                    InspectionStatus::Available(value),
-                );
-            }
+            Ok(value) => match value.get("BackendState").and_then(Value::as_str) {
+                Some("Running") => {
+                    observed.facts.insert(
+                        "tailscale.status".to_owned(),
+                        InspectionStatus::Available(value),
+                    );
+                    true
+                }
+                Some(state) => {
+                    observed.facts.insert(
+                        "tailscale.status".to_owned(),
+                        InspectionStatus::Unavailable {
+                            reason: format!("Tailscale backend is {state}, not Running"),
+                        },
+                    );
+                    false
+                }
+                None => {
+                    observed.facts.insert(
+                        "tailscale.status".to_owned(),
+                        InspectionStatus::Error {
+                            message: "tailscale status JSON has no BackendState".to_owned(),
+                        },
+                    );
+                    false
+                }
+            },
             Err(error) => {
                 observed.facts.insert(
                     "tailscale.status".to_owned(),
@@ -1406,6 +1429,7 @@ fn inspect_tailscale(
                         message: format!("tailscale status returned malformed JSON: {error}"),
                     },
                 );
+                false
             }
         },
         Ok(output) => {
@@ -1419,28 +1443,82 @@ fn inspect_tailscale(
                     ),
                 },
             );
+            false
         }
         Err(error) => {
             observed
                 .facts
                 .insert("tailscale.status".to_owned(), command_error(error));
+            false
         }
-    }
+    };
     let tailscale = desired.and_then(|state| state.tailscale.as_ref());
-    let prefs_state = match runner.run("tailscale", &["debug", "prefs"]) {
+    if !tailscale_running {
+        let reason = observed
+            .facts
+            .get("tailscale.status")
+            .map(inspection_message)
+            .unwrap_or_else(|| "Tailscale backend state unavailable".to_owned());
+        observed.facts.insert(
+            "tailscale.preferences".to_owned(),
+            InspectionStatus::Unavailable {
+                reason: reason.clone(),
+            },
+        );
+        for fact in [
+            "tailscale.ssh",
+            "tailscale.exit_node",
+            "tailscale.auto_update",
+        ] {
+            observed.facts.insert(
+                fact.to_owned(),
+                InspectionStatus::Unavailable {
+                    reason: reason.clone(),
+                },
+            );
+        }
+        if kind == ReportKind::Doctor {
+            diagnostics.push(diag(
+                "inspection/tailscale/status",
+                DiagnosticSeverity::Warn,
+                "Tailscale backend is unavailable or not Running",
+                vec![reason],
+                None,
+            ));
+            if tailscale.is_none() {
+                diagnostics.push(diag(
+                    "security/tailscale",
+                    DiagnosticSeverity::Warn,
+                    "Tailscale policy is unmanaged",
+                    vec![],
+                    None,
+                ));
+            }
+        }
+        return tailscale.is_some();
+    }
+    let prefs_state = match runner.run("tailscale", &["get", "--json"]) {
         Ok(output) if output.status == 0 => match serde_json::from_str::<Value>(&output.stdout) {
             Ok(value) => {
+                // Retain only the three explicitly managed values. `get --json`
+                // includes all preferences, but unrelated values are neither
+                // owned nor useful in state reports/fingerprints.
+                let managed = json!({
+                    "ssh": value.get("ssh").cloned().unwrap_or(Value::Null),
+                    "advertise-exit-node": value.get("advertise-exit-node").cloned().unwrap_or(Value::Null),
+                    "auto-update": value.get("auto-update").cloned().unwrap_or(Value::Null),
+                });
                 observed.facts.insert(
                     "tailscale.preferences".to_owned(),
-                    InspectionStatus::Available(value.clone()),
+                    InspectionStatus::Available(managed.clone()),
                 );
-                Some(value)
+                Some(managed)
             }
             Err(error) => {
                 observed.facts.insert(
                     "tailscale.preferences".to_owned(),
                     InspectionStatus::Error {
-                        message: format!("tailscale debug prefs returned malformed JSON: {error}"),
+                        message: format!("tailscale get returned malformed JSON: {error}"),
                     },
                 );
                 None
@@ -1451,7 +1529,7 @@ fn inspect_tailscale(
                 "tailscale.preferences".to_owned(),
                 InspectionStatus::Error {
                     message: format!(
-                        "tailscale debug prefs exited {}: {}",
+                        "tailscale get exited {}: {}",
                         output.status,
                         output.stderr.trim()
                     ),
@@ -1466,11 +1544,6 @@ fn inspect_tailscale(
             None
         }
     };
-    let status_incomplete = tailscale.is_some()
-        && !matches!(
-            observed.facts.get("tailscale.status"),
-            Some(InspectionStatus::Available(_))
-        );
     let Some(tailscale) = tailscale else {
         if kind == ReportKind::Doctor {
             diagnostics.push(diag(
@@ -1501,97 +1574,85 @@ fn inspect_tailscale(
         }
         return true;
     };
-    let run_ssh = prefs.get("RunSSH").and_then(Value::as_bool);
-    let observed_exit_routes =
-        prefs
-            .get("AdvertiseRoutes")
-            .and_then(Value::as_array)
-            .map(|routes| {
-                ["0.0.0.0/0", "::/0"]
-                    .iter()
-                    .filter(|wanted| routes.iter().any(|route| route.as_str() == Some(**wanted)))
-                    .map(|route| (*route).to_owned())
-                    .collect::<Vec<_>>()
-            });
-    let desired_exit_routes = if tailscale.advertise_exit_node {
-        vec!["0.0.0.0/0".to_owned(), "::/0".to_owned()]
-    } else {
-        Vec::new()
-    };
-    let auto_update = prefs
-        .get("AutoUpdate")
-        .and_then(|value| value.get("Check"))
-        .and_then(Value::as_bool);
-    let mut errors = Vec::new();
-    let mut drift = Vec::new();
-    compare_bool(&mut errors, &mut drift, "RunSSH", run_ssh, tailscale.ssh);
-    match observed_exit_routes.as_ref() {
-        None => errors.push("AdvertiseRoutes is missing or invalid".to_owned()),
-        Some(routes) if routes != &desired_exit_routes => drift.push(format!(
-            "AdvertiseRoutes(exit node): observed {routes:?}, desired {desired_exit_routes:?}"
-        )),
-        Some(_) => {}
-    }
-    compare_bool(
-        &mut errors,
-        &mut drift,
-        "AutoUpdate.Check",
-        auto_update,
-        tailscale.auto_update,
-    );
-    let policy_compliant = errors.is_empty() && drift.is_empty();
-    observed.facts.insert("tailscale.policy".to_owned(), if errors.is_empty() { InspectionStatus::Available(json!({"run_ssh": run_ssh, "advertise_exit_node": observed_exit_routes.as_ref().is_some_and(|routes| !routes.is_empty()), "advertise_routes": observed_exit_routes, "desired_advertise_routes": desired_exit_routes, "auto_update": auto_update, "compliant": policy_compliant})) } else { InspectionStatus::Error { message: errors.join("; ") } });
-    {
+    let preferences = [
+        (
+            "ssh",
+            "tailscale.ssh",
+            "security/tailscale-ssh",
+            tailscale.ssh,
+            RiskClass::Access,
+        ),
+        (
+            "advertise-exit-node",
+            "tailscale.exit_node",
+            "security/tailscale-exit-node",
+            tailscale.advertise_exit_node,
+            RiskClass::Access,
+        ),
+        (
+            "auto-update",
+            "tailscale.auto_update",
+            "security/tailscale-auto-update",
+            tailscale.auto_update,
+            RiskClass::Moderate,
+        ),
+    ];
+    let mut incomplete = false;
+    for (name, fact, remediation, wanted, risk) in preferences {
+        let actual = prefs.get(name).and_then(Value::as_bool);
+        let Some(actual) = actual else {
+            let message = format!("tailscale get omitted or returned an invalid {name} value");
+            observed.facts.insert(
+                fact.to_owned(),
+                InspectionStatus::Error {
+                    message: message.clone(),
+                },
+            );
+            diagnostics.push(diag(
+                format!("inspection/{fact}"),
+                DiagnosticSeverity::Warn,
+                "Managed Tailscale preference could not be inspected",
+                vec![message],
+                None,
+            ));
+            incomplete = true;
+            continue;
+        };
+        let compliant = actual == wanted;
+        observed.facts.insert(
+            fact.to_owned(),
+            InspectionStatus::Available(
+                json!({"observed": actual, "desired": wanted, "compliant": compliant}),
+            ),
+        );
         let mut diagnostic = diag(
-            "security/tailscale",
-            if !errors.is_empty() {
-                DiagnosticSeverity::Warn
-            } else if drift.is_empty() {
+            remediation,
+            if compliant {
                 DiagnosticSeverity::Pass
             } else {
                 DiagnosticSeverity::Fail
             },
-            if !errors.is_empty() {
-                "Tailscale preferences are incomplete"
-            } else if drift.is_empty() {
-                "Tailscale preferences match desired policy"
+            if compliant {
+                format!("Tailscale {name} preference matches desired policy")
             } else {
-                "Tailscale preferences drifted from desired policy"
+                format!("Tailscale {name} preference drifted")
             },
-            if errors.is_empty() {
-                drift.clone()
+            if compliant {
+                vec![]
             } else {
-                errors.clone()
+                vec![format!("{name}: observed {actual}, desired {wanted}")]
             },
-            if errors.is_empty() && !drift.is_empty() {
-                Some("security/tailscale".to_owned())
-            } else {
-                None
-            },
+            (!compliant).then_some(remediation.to_owned()),
         );
-        if !drift.is_empty() && errors.is_empty() {
+        if !compliant && risk == RiskClass::Access {
             diagnostic.risk = Some(RiskClass::Access);
             diagnostic.confirmation_required = true;
+        } else if !compliant {
+            diagnostic.risk = Some(RiskClass::Moderate);
         }
         diagnostics.push(diagnostic);
     }
-    !errors.is_empty() || status_incomplete
-}
-
-fn compare_bool(
-    errors: &mut Vec<String>,
-    drift: &mut Vec<String>,
-    name: &str,
-    observed: Option<bool>,
-    desired: bool,
-) {
-    match observed {
-        None => errors.push(format!("missing or invalid {name}")),
-        Some(value) if value != desired => {
-            drift.push(format!("{name}: observed {value}, desired {desired}"))
-        }
-        Some(_) => {}
-    }
+    incomplete
 }
 
 fn compare_ssh_policy(
@@ -2239,8 +2300,38 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|item| item.id == "inspection/tailscale/preferences")
+                .any(|item| item.id == "inspection/tailscale/status")
         );
+    }
+
+    #[test]
+    fn tailscale_requires_running_backend_and_never_reads_preferences_when_offline() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[tailscale]\nssh=true\nadvertise_exit_node=false\nauto_update=true\n",
+        )
+        .unwrap();
+        let fixtures = FixtureRunner(HashMap::from([(
+            "tailscale status --json".to_owned(),
+            output("{\"BackendState\":\"NeedsLogin\"}", 0),
+        )]));
+        let mut observed = ObservedState::default();
+        let mut diagnostics = Vec::new();
+        assert!(inspect_tailscale(
+            &fixtures,
+            Some(&desired),
+            &mut observed,
+            ReportKind::Doctor,
+            &mut diagnostics,
+        ));
+        assert!(matches!(
+            observed.facts.get("tailscale.status"),
+            Some(InspectionStatus::Unavailable { reason }) if reason.contains("NeedsLogin")
+        ));
+        assert!(matches!(
+            observed.facts.get("tailscale.ssh"),
+            Some(InspectionStatus::Unavailable { .. })
+        ));
+        assert!(diagnostics.iter().all(|item| item.remediation_id.is_none()));
     }
 
     #[test]
@@ -2263,14 +2354,14 @@ mod tests {
             &mut diagnostics
         ));
         assert!(matches!(
-            observed.facts.get("tailscale.policy"),
+            observed.facts.get("tailscale.ssh"),
             Some(InspectionStatus::Unavailable { .. })
         ));
-        assert!(
-            !diagnostics
-                .iter()
-                .any(|item| item.remediation_id.as_deref() == Some("security/tailscale"))
-        );
+        assert!(!diagnostics.iter().any(|item| {
+            item.remediation_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with("security/tailscale-"))
+        }));
     }
 
     #[test]
@@ -2415,9 +2506,9 @@ mod tests {
                 output("{\"BackendState\":\"Running\"}", 0),
             ),
             (
-                "tailscale debug prefs".to_owned(),
+                "tailscale get --json".to_owned(),
                 output(
-                    "{\"RunSSH\":true,\"AdvertiseRoutes\":[],\"AutoUpdate\":{\"Check\":true}}",
+                    "{\"ssh\":true,\"advertise-exit-node\":false,\"auto-update\":true,\"hostname\":\"must-not-be-retained\"}",
                     0,
                 ),
             ),
@@ -2431,7 +2522,16 @@ mod tests {
             ReportKind::Doctor,
             &mut diagnostics
         ));
-        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Pass);
+        assert_eq!(diagnostics.len(), 3);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|item| item.severity == DiagnosticSeverity::Pass)
+        );
+        assert!(matches!(
+            observed.facts.get("tailscale.preferences"),
+            Some(InspectionStatus::Available(value)) if value.get("hostname").is_none()
+        ));
 
         let fixtures = FixtureRunner(HashMap::from([
             (
@@ -2439,9 +2539,9 @@ mod tests {
                 output("{\"BackendState\":\"Running\"}", 0),
             ),
             (
-                "tailscale debug prefs".to_owned(),
+                "tailscale get --json".to_owned(),
                 output(
-                    "{\"RunSSH\":false,\"AdvertiseRoutes\":[\"0.0.0.0/0\"],\"AutoUpdate\":{\"Check\":false}}",
+                    "{\"ssh\":false,\"advertise-exit-node\":true,\"auto-update\":false}",
                     0,
                 ),
             ),
@@ -2455,15 +2555,75 @@ mod tests {
             ReportKind::Doctor,
             &mut diagnostics
         ));
-        assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Fail);
+        assert!(diagnostics[0].id == "security/tailscale-ssh");
+        let ssh = diagnostics
+            .iter()
+            .find(|item| item.id == "security/tailscale-ssh")
+            .unwrap();
+        let exit_node = diagnostics
+            .iter()
+            .find(|item| item.id == "security/tailscale-exit-node")
+            .unwrap();
+        let auto_update = diagnostics
+            .iter()
+            .find(|item| item.id == "security/tailscale-auto-update")
+            .unwrap();
+        assert_eq!(ssh.risk, Some(RiskClass::Access));
+        assert_eq!(exit_node.risk, Some(RiskClass::Access));
+        assert!(ssh.confirmation_required && exit_node.confirmation_required);
+        assert_eq!(auto_update.risk, Some(RiskClass::Moderate));
+        assert!(!auto_update.confirmation_required);
         assert!(
-            diagnostics[0]
-                .evidence
+            diagnostics
                 .iter()
-                .any(|item| item.contains("AdvertiseRoutes(exit node)"))
+                .all(|item| item.severity == DiagnosticSeverity::Fail)
         );
-        assert_eq!(diagnostics[0].risk, Some(RiskClass::Access));
-        assert!(diagnostics[0].confirmation_required);
+    }
+
+    #[test]
+    fn tailscale_single_preference_drift_has_only_its_bounded_remediation() {
+        let desired = mistborn_bootstrap::config::DesiredState::from_toml(
+            "version=1\nprofile='vps'\n[tailscale]\nssh=true\nadvertise_exit_node=false\nauto_update=true\n",
+        )
+        .unwrap();
+        for (json, expected_id) in [
+            (
+                r#"{"ssh":false,"advertise-exit-node":false,"auto-update":true}"#,
+                "security/tailscale-ssh",
+            ),
+            (
+                r#"{"ssh":true,"advertise-exit-node":true,"auto-update":true}"#,
+                "security/tailscale-exit-node",
+            ),
+            (
+                r#"{"ssh":true,"advertise-exit-node":false,"auto-update":false}"#,
+                "security/tailscale-auto-update",
+            ),
+        ] {
+            let fixtures = FixtureRunner(HashMap::from([
+                (
+                    "tailscale status --json".to_owned(),
+                    output("{\"BackendState\":\"Running\"}", 0),
+                ),
+                ("tailscale get --json".to_owned(), output(json, 0)),
+            ]));
+            let mut observed = ObservedState::default();
+            let mut diagnostics = Vec::new();
+            assert!(!inspect_tailscale(
+                &fixtures,
+                Some(&desired),
+                &mut observed,
+                ReportKind::Doctor,
+                &mut diagnostics,
+            ));
+            let drifted = diagnostics
+                .iter()
+                .filter(|item| item.severity == DiagnosticSeverity::Fail)
+                .collect::<Vec<_>>();
+            assert_eq!(drifted.len(), 1);
+            assert_eq!(drifted[0].id, expected_id);
+            assert_eq!(drifted[0].remediation_id.as_deref(), Some(expected_id));
+        }
     }
 
     #[test]

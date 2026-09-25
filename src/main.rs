@@ -1166,10 +1166,63 @@ fn apply_security_remediation(
     match remediation {
         RemediationId::SecurityUfw => apply_ufw_policy(&desired),
         RemediationId::SecurityPlexFirewall => apply_plex_firewall(&desired),
+        RemediationId::SecurityTailscaleSsh
+        | RemediationId::SecurityTailscaleExitNode
+        | RemediationId::SecurityTailscaleAutoUpdate => {
+            apply_tailscale_policy(remediation, &desired)
+        }
         other => Err(format!(
             "no host adapter is registered for {} yet",
             other.as_str()
         )),
+    }
+}
+
+fn tailscale_set_args(
+    remediation: mistborn_bootstrap::domain::RemediationId,
+    config: &mistborn_bootstrap::config::TailscaleConfig,
+) -> Vec<String> {
+    use mistborn_bootstrap::domain::RemediationId;
+    let flag = match remediation {
+        RemediationId::SecurityTailscaleSsh => format!("--ssh={}", config.ssh),
+        RemediationId::SecurityTailscaleExitNode => {
+            format!("--advertise-exit-node={}", config.advertise_exit_node)
+        }
+        RemediationId::SecurityTailscaleAutoUpdate => {
+            format!("--auto-update={}", config.auto_update)
+        }
+        _ => return Vec::new(),
+    };
+    vec!["set".to_owned(), flag]
+}
+
+fn apply_tailscale_policy(
+    remediation: mistborn_bootstrap::domain::RemediationId,
+    desired: &mistborn_bootstrap::config::DesiredState,
+) -> Result<(), String> {
+    let config = desired
+        .tailscale
+        .as_ref()
+        .ok_or("Tailscale policy is unmanaged")?;
+    let args = tailscale_set_args(remediation, config);
+    if args.is_empty() {
+        return Err(format!(
+            "{} is not a Tailscale preference remediation",
+            remediation.as_str()
+        ));
+    }
+    let status = Command::new("tailscale")
+        .args(&args)
+        .status()
+        .map_err(|error| format!("cannot start tailscale: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "tailscale {} exited with {}",
+            args.join(" "),
+            status.code().unwrap_or(128)
+        ))
     }
 }
 
@@ -1395,6 +1448,9 @@ impl mistborn_bootstrap::reconciliation::ReconcileAdapter for SystemReconcileAda
             RemediationId::SecurityFail2ban => ("service.fail2ban", "active"),
             RemediationId::SecurityUfw => ("firewall.policy", "compliant"),
             RemediationId::SecurityPlexFirewall => ("plex.policy", "compliant"),
+            RemediationId::SecurityTailscaleSsh => ("tailscale.ssh", "compliant"),
+            RemediationId::SecurityTailscaleExitNode => ("tailscale.exit_node", "compliant"),
+            RemediationId::SecurityTailscaleAutoUpdate => ("tailscale.auto_update", "compliant"),
             _ => return Err(format!("no verifier is registered for {}", id.as_str())),
         };
         let satisfied = verify_observed_fact(&report.observed, fact, predicate)?;
@@ -1982,5 +2038,61 @@ mod tests {
         };
 
         assert!(!task_is_current(Some(&state), &task));
+    }
+
+    #[test]
+    fn tailscale_reconcile_uses_one_flag_set_argv_without_enrollment() {
+        let config = mistborn_bootstrap::config::TailscaleConfig {
+            ssh: true,
+            advertise_exit_node: false,
+            auto_update: true,
+        };
+        use mistborn_bootstrap::domain::RemediationId;
+        let argv = tailscale_set_args(RemediationId::SecurityTailscaleSsh, &config);
+        assert_eq!(argv, ["set", "--ssh=true"]);
+        assert_eq!(
+            tailscale_set_args(RemediationId::SecurityTailscaleExitNode, &config),
+            ["set", "--advertise-exit-node=false"]
+        );
+        assert_eq!(
+            tailscale_set_args(RemediationId::SecurityTailscaleAutoUpdate, &config),
+            ["set", "--auto-update=true"]
+        );
+        assert!(
+            !argv
+                .iter()
+                .any(|arg| arg == "up" || arg.contains("authkey"))
+        );
+    }
+
+    #[test]
+    fn tailscale_verifier_requires_available_matching_preferences() {
+        use mistborn_bootstrap::domain::{InspectionStatus, ObservedState, RemediationId};
+        let mut observed = ObservedState::default();
+        observed.facts.insert(
+            "tailscale.ssh".to_owned(),
+            InspectionStatus::Available(serde_json::json!({"compliant": true})),
+        );
+        assert!(verify_observed_fact(&observed, "tailscale.ssh", "compliant").unwrap());
+        observed.facts.insert(
+            "tailscale.ssh".to_owned(),
+            InspectionStatus::Available(serde_json::json!({"compliant": false})),
+        );
+        assert!(!verify_observed_fact(&observed, "tailscale.ssh", "compliant").unwrap());
+        observed.facts.insert(
+            "tailscale.ssh".to_owned(),
+            InspectionStatus::Error {
+                message: "daemon inaccessible".to_owned(),
+            },
+        );
+        assert!(
+            verify_observed_fact(&observed, "tailscale.ssh", "compliant")
+                .unwrap_err()
+                .contains("inaccessible")
+        );
+        assert_eq!(
+            RemediationId::SecurityTailscaleSsh.as_str(),
+            "security/tailscale-ssh"
+        );
     }
 }

@@ -76,7 +76,9 @@ pub enum RemediationId {
     SecurityPlexFirewall,
     SecurityFail2ban,
     SecuritySsh,
-    SecurityTailscale,
+    SecurityTailscaleSsh,
+    SecurityTailscaleExitNode,
+    SecurityTailscaleAutoUpdate,
     PackagesDocker,
     PackagesTailscale,
     PackagesUfw,
@@ -84,12 +86,14 @@ pub enum RemediationId {
 }
 
 impl RemediationId {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 11] = [
         Self::SecurityUfw,
         Self::SecurityPlexFirewall,
         Self::SecurityFail2ban,
         Self::SecuritySsh,
-        Self::SecurityTailscale,
+        Self::SecurityTailscaleSsh,
+        Self::SecurityTailscaleExitNode,
+        Self::SecurityTailscaleAutoUpdate,
         Self::PackagesDocker,
         Self::PackagesTailscale,
         Self::PackagesUfw,
@@ -102,7 +106,9 @@ impl RemediationId {
             Self::SecurityPlexFirewall => "security/plex-firewall",
             Self::SecurityFail2ban => "security/fail2ban",
             Self::SecuritySsh => "security/ssh",
-            Self::SecurityTailscale => "security/tailscale",
+            Self::SecurityTailscaleSsh => "security/tailscale-ssh",
+            Self::SecurityTailscaleExitNode => "security/tailscale-exit-node",
+            Self::SecurityTailscaleAutoUpdate => "security/tailscale-auto-update",
             Self::PackagesDocker => "packages/docker",
             Self::PackagesTailscale => "packages/tailscale",
             Self::PackagesUfw => "packages/ufw",

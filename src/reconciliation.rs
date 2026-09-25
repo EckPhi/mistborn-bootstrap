@@ -23,7 +23,7 @@ struct Definition {
     available: bool,
 }
 
-const REGISTRY: [Definition; 9] = [
+const REGISTRY: [Definition; 11] = [
     Definition {
         id: RemediationId::SecurityUfw,
         risk: RiskClass::Access,
@@ -53,11 +53,25 @@ const REGISTRY: [Definition; 9] = [
         available: false,
     },
     Definition {
-        id: RemediationId::SecurityTailscale,
+        id: RemediationId::SecurityTailscaleSsh,
         risk: RiskClass::Access,
         confirmation: ConfirmationPolicy::Explicit,
         dependency: Some(RemediationId::PackagesTailscale),
-        available: false,
+        available: true,
+    },
+    Definition {
+        id: RemediationId::SecurityTailscaleExitNode,
+        risk: RiskClass::Access,
+        confirmation: ConfirmationPolicy::Explicit,
+        dependency: Some(RemediationId::PackagesTailscale),
+        available: true,
+    },
+    Definition {
+        id: RemediationId::SecurityTailscaleAutoUpdate,
+        risk: RiskClass::Moderate,
+        confirmation: ConfirmationPolicy::None,
+        dependency: Some(RemediationId::PackagesTailscale),
+        available: true,
     },
     Definition {
         id: RemediationId::PackagesDocker,
@@ -246,6 +260,11 @@ fn action_description(id: RemediationId) -> String {
         RemediationId::PackagesUfw => "install the UFW package".into(),
         RemediationId::PackagesFail2banClient => "install fail2ban".into(),
         RemediationId::SecurityFail2ban => "enable fail2ban service".into(),
+        RemediationId::SecurityTailscaleSsh => "set Tailscale SSH preference".into(),
+        RemediationId::SecurityTailscaleExitNode => {
+            "set Tailscale exit-node advertisement preference".into()
+        }
+        RemediationId::SecurityTailscaleAutoUpdate => "set Tailscale auto-update preference".into(),
         RemediationId::SecurityUfw => {
             "apply desired UFW policy and add missing managed rules without deleting rules".into()
         }
@@ -896,6 +915,42 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["security/ufw", "security/plex-firewall"]
         );
+    }
+
+    #[test]
+    fn tailscale_preferences_are_separate_and_auto_update_is_not_safe_allowlisted() {
+        let diagnostics = vec![
+            drift("security/tailscale-ssh", DiagnosticSeverity::Fail),
+            drift("security/tailscale-exit-node", DiagnosticSeverity::Fail),
+            drift("security/tailscale-auto-update", DiagnosticSeverity::Fail),
+        ];
+        let proposed = plan(&serde_json::json!({}), &diagnostics, None).unwrap();
+        assert_eq!(
+            proposed
+                .remediations
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "security/tailscale-ssh",
+                "security/tailscale-exit-node",
+                "security/tailscale-auto-update"
+            ]
+        );
+        assert_eq!(proposed.remediations[0].risk, RiskClass::Access);
+        assert_eq!(proposed.remediations[1].risk, RiskClass::Access);
+        assert_eq!(proposed.remediations[2].risk, RiskClass::Moderate);
+        assert!(!safe_allowlisted(
+            RemediationId::SecurityTailscaleAutoUpdate
+        ));
+        let target = plan(
+            &serde_json::json!({}),
+            &diagnostics,
+            Some(RemediationId::SecurityTailscaleAutoUpdate),
+        )
+        .unwrap();
+        assert_eq!(target.remediations.len(), 1);
+        assert_eq!(target.remediations[0].id, "security/tailscale-auto-update");
     }
 
     #[test]

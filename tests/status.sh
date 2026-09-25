@@ -25,7 +25,7 @@ case "$command:$*" in
   docker:info) exit 0 ;;
   tailscale:--version) echo '1.88.0' ;;
   tailscale:'status --json') echo '{"BackendState":"Running"}' ;;
-  tailscale:'debug prefs') echo '{"RunSSH":true,"AdvertiseRoutes":["0.0.0.0/0"]}' ;;
+  tailscale:'get --json') echo '{"ssh":true,"advertise-exit-node":false,"auto-update":true}' ;;
   rclone:--version) echo 'rclone v1.70.0' ;;
   ufw:--version) echo 'ufw 0.36.2' ;;
   ufw:'status verbose') cat <<'EOF'
