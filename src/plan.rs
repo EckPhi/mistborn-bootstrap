@@ -25,9 +25,19 @@ pub struct Task {
     pub action: String,
     #[serde(default = "default_weight")]
     pub weight: u32,
+    #[serde(default = "default_revision")]
+    pub revision: u32,
+    #[serde(default)]
+    pub inputs: Vec<String>,
+    #[serde(default)]
+    pub requires_confirmation: bool,
 }
 
 fn default_weight() -> u32 {
+    1
+}
+
+fn default_revision() -> u32 {
     1
 }
 
@@ -35,7 +45,7 @@ pub fn load(path: &Path, expected_collection: &str) -> Result<Plan, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
     let plan: Plan = toml::from_str(&source).map_err(|error| format!("invalid plan: {error}"))?;
-    if plan.version != 1 || plan.collection != expected_collection {
+    if !(1..=2).contains(&plan.version) || plan.collection != expected_collection {
         return Err(format!(
             "plan {} has incompatible version or collection",
             path.display()
@@ -57,6 +67,7 @@ pub fn load(path: &Path, expected_collection: &str) -> Result<Plan, String> {
             if task.id.is_empty()
                 || task.action.is_empty()
                 || task.weight == 0
+                || task.revision == 0
                 || !task_ids.insert(task.id.clone())
             {
                 return Err(format!(

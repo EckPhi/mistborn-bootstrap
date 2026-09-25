@@ -20,11 +20,19 @@ use progress::ProgressView;
 
 #[derive(Debug)]
 struct Options {
+    command: RunCommand,
     collection: String,
     root: PathBuf,
     state_dir: PathBuf,
     log_dir: PathBuf,
     forwarded: Vec<String>,
+    target: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
+enum RunCommand {
+    Apply,
+    Plan,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -40,8 +48,40 @@ struct ModuleState {
     status: String,
     attempts: u32,
     updated_at: u64,
+    #[serde(default, deserialize_with = "deserialize_tasks")]
+    tasks: BTreeMap<String, TaskState>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct TaskState {
+    status: String,
     #[serde(default)]
-    tasks: BTreeMap<String, String>,
+    applied_revision: u32,
+    #[serde(default)]
+    input_fingerprint: String,
+    #[serde(default)]
+    updated_at: u64,
+}
+
+fn deserialize_tasks<'de, D>(deserializer: D) -> Result<BTreeMap<String, TaskState>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let values = BTreeMap::<String, serde_json::Value>::deserialize(deserializer)?;
+    values
+        .into_iter()
+        .map(|(id, value)| {
+            let state = match value {
+                serde_json::Value::String(status) => TaskState {
+                    status,
+                    applied_revision: 1,
+                    ..TaskState::default()
+                },
+                value => serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            };
+            Ok((id, state))
+        })
+        .collect()
 }
 
 struct EventLog(File);
@@ -55,7 +95,7 @@ impl EventLog {
 }
 
 fn usage() -> &'static str {
-    "Usage: mistborn-bootstrap run COLLECTION [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]"
+    "Usage: mistborn-bootstrap {run|apply|plan} COLLECTION [TARGET] [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       TARGET is STAGE or STAGE/TASK\n       mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]"
 }
 
 fn interactive_terminal() -> bool {
@@ -73,10 +113,15 @@ fn value(args: &[String], index: &mut usize, flag: &str) -> Result<String, Strin
 
 fn parse_args() -> Result<Options, String> {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.len() < 2 || args[0] != "run" {
+    if args.len() < 2 || !matches!(args[0].as_str(), "run" | "apply" | "plan") {
         return Err(usage().to_owned());
     }
 
+    let command = if args[0] == "plan" {
+        RunCommand::Plan
+    } else {
+        RunCommand::Apply
+    };
     let collection = args[1].clone();
     if !collection
         .chars()
@@ -89,6 +134,7 @@ fn parse_args() -> Result<Options, String> {
     let mut state_dir = PathBuf::from("/var/lib/mistborn-bootstrap");
     let mut log_dir = PathBuf::from("/var/log/mistborn-bootstrap");
     let mut forwarded = Vec::new();
+    let mut target = None;
     let mut index = 2;
     while index < args.len() {
         match args[index].as_str() {
@@ -101,16 +147,19 @@ fn parse_args() -> Result<Options, String> {
             }
             "--dry-run" | "--yes" => forwarded.push(args[index].clone()),
             "--help" | "-h" => return Err(usage().to_owned()),
+            value if !value.starts_with('-') && target.is_none() => target = Some(value.to_owned()),
             unknown => return Err(format!("unknown argument: {unknown}\n{}", usage())),
         }
         index += 1;
     }
     Ok(Options {
+        command,
         collection,
         root,
         state_dir,
         log_dir,
         forwarded,
+        target,
     })
 }
 
@@ -164,21 +213,96 @@ fn read_task_events(path: &Path) -> Result<Vec<TaskEvent>, String> {
         .collect())
 }
 
-fn load_state(path: &Path, collection: &str) -> Result<RunState, String> {
+fn load_state(path: &Path, collection: &str) -> Result<(RunState, bool), String> {
     if !path.exists() {
-        return Ok(RunState {
-            version: 1,
-            collection: collection.to_owned(),
-            ..RunState::default()
-        });
+        return Ok((
+            RunState {
+                version: 2,
+                collection: collection.to_owned(),
+                ..RunState::default()
+            },
+            false,
+        ));
     }
     let file = File::open(path).map_err(|error| error.to_string())?;
-    let state: RunState =
+    let mut state: RunState =
         serde_json::from_reader(file).map_err(|error| format!("invalid state file: {error}"))?;
-    if state.version != 1 || state.collection != collection {
+    if !(1..=2).contains(&state.version) || state.collection != collection {
         return Err("state file belongs to an incompatible run".to_owned());
     }
-    Ok(state)
+    let migrated = state.version == 1;
+    state.version = 2;
+    Ok((state, migrated))
+}
+
+fn task_fingerprint(task: &plan::Task) -> String {
+    if task.inputs.is_empty() {
+        return String::new();
+    }
+    let mut hash = 0xcbf29ce484222325_u64;
+    for key in &task.inputs {
+        for byte in key
+            .bytes()
+            .chain([b'='])
+            .chain(env::var(key).unwrap_or_default().bytes())
+            .chain([0])
+        {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("{hash:016x}")
+}
+
+fn task_is_current(state: Option<&TaskState>, task: &plan::Task) -> bool {
+    state.is_some_and(|state| {
+        matches!(state.status.as_str(), "completed" | "skipped")
+            && state.applied_revision == task.revision
+            && (task.inputs.is_empty() || state.input_fingerprint == task_fingerprint(task))
+    })
+}
+
+fn target_matches(target: Option<&str>, stage: &str, task: Option<&str>) -> bool {
+    match target {
+        None => true,
+        Some(value) if value == stage => true,
+        Some(value) => task.is_some_and(|task| value == format!("{stage}/{task}")),
+    }
+}
+
+fn describe_plan(plan: &plan::Plan, state: &RunState, target: Option<&str>) {
+    for stage in &plan.stages {
+        if !target_matches(target, &stage.id, None)
+            && !target.is_some_and(|v| v.starts_with(&format!("{}/", stage.id)))
+        {
+            continue;
+        }
+        println!("{}:", stage.id);
+        for task in &stage.tasks {
+            if !target_matches(target, &stage.id, Some(&task.id)) {
+                continue;
+            }
+            let saved = state
+                .modules
+                .get(&stage.id)
+                .and_then(|module| module.tasks.get(&task.id));
+            let status = if task_is_current(saved, task) {
+                "current"
+            } else if saved.is_none() {
+                "pending"
+            } else if saved.is_some_and(|s| s.applied_revision != task.revision) {
+                "stale"
+            } else {
+                "changed"
+            };
+            let confirmation = if task.requires_confirmation {
+                " (explicit apply required)"
+            } else {
+                ""
+            };
+            println!("  {:<18} {status}{confirmation}", task.id);
+        }
+    }
 }
 
 fn save_state(path: &Path, state: &RunState) -> Result<(), String> {
@@ -223,20 +347,59 @@ fn execute(options: Options) -> Result<(), String> {
         return Err(format!("installer not found: {}", installer.display()));
     }
 
-    fs::create_dir_all(&options.state_dir).map_err(|error| error.to_string())?;
-    fs::create_dir_all(&options.log_dir).map_err(|error| error.to_string())?;
+    if let Some(target) = options.target.as_deref() {
+        let valid = plan.stages.iter().any(|stage| {
+            target == stage.id
+                || stage
+                    .tasks
+                    .iter()
+                    .any(|task| target == format!("{}/{}", stage.id, task.id))
+        });
+        if !valid {
+            return Err(format!("unknown target: {target}"));
+        }
+    }
+
     let state_path = options
         .state_dir
         .join(format!("{}.json", options.collection));
-    let mut state = load_state(&state_path, &options.collection)?;
+    let (mut state, migrated) = load_state(&state_path, &options.collection)?;
+    if migrated {
+        for stage in &plan.stages {
+            if let Some(module) = state.modules.get_mut(&stage.id) {
+                for task in &stage.tasks {
+                    if let Some(saved) = module.tasks.get_mut(&task.id) {
+                        saved.input_fingerprint = task_fingerprint(task);
+                    }
+                }
+            }
+        }
+    }
+    if options.command == RunCommand::Plan {
+        describe_plan(&plan, &state, options.target.as_deref());
+        return Ok(());
+    }
+
+    fs::create_dir_all(&options.state_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&options.log_dir).map_err(|error| error.to_string())?;
+    if migrated {
+        let backup = state_path.with_extension("json.v1.bak");
+        if !backup.exists() {
+            fs::copy(&state_path, &backup)
+                .map_err(|error| format!("cannot back up v1 state: {error}"))?;
+        }
+    }
     let completed_flags: Vec<bool> = plan
         .stages
         .iter()
         .map(|stage| {
-            state
-                .modules
-                .get(&stage.id)
-                .is_some_and(|entry| entry.status == "completed")
+            state.modules.get(&stage.id).is_some_and(|entry| {
+                entry.status == "completed"
+                    && stage
+                        .tasks
+                        .iter()
+                        .all(|task| task_is_current(entry.tasks.get(&task.id), task))
+            })
         })
         .collect();
     let already_completed = completed_flags.iter().filter(|done| **done).count();
@@ -272,12 +435,45 @@ fn execute(options: Options) -> Result<(), String> {
 
     for (stage_index, stage) in plan.stages.iter().enumerate() {
         let module = &stage.id;
-        if module != "toolset"
-            && state
+        let existed = state.modules.contains_key(module);
+        let selected_tasks: Vec<String> = stage
+            .tasks
+            .iter()
+            .filter(|task| {
+                if !target_matches(options.target.as_deref(), module, Some(&task.id)) {
+                    return false;
+                }
+                let current = state
+                    .modules
+                    .get(module)
+                    .and_then(|entry| entry.tasks.get(&task.id));
+                let requested = options.target.is_some();
+                (requested || module == "toolset" || !task_is_current(current, task))
+                    && (requested || !task.requires_confirmation || !existed)
+            })
+            .map(|task| task.id.clone())
+            .collect();
+        let empty_stage_needs_run = stage.tasks.is_empty()
+            && !state
                 .modules
                 .get(module)
-                .is_some_and(|entry| entry.status == "completed")
-        {
+                .is_some_and(|entry| entry.status == "completed");
+        if selected_tasks.is_empty() && !empty_stage_needs_run {
+            let has_outstanding_tasks = stage.tasks.iter().any(|task| {
+                !task_is_current(
+                    state
+                        .modules
+                        .get(module)
+                        .and_then(|entry| entry.tasks.get(&task.id)),
+                    task,
+                )
+            });
+            if has_outstanding_tasks && let Some(module_state) = state.modules.get_mut(module) {
+                module_state.status = "partial".to_owned();
+                module_state.updated_at = now();
+                state.updated_at = now();
+                save_state(&state_path, &state)?;
+            }
             if let Some(progress) = &progress {
                 progress.skipped(&module);
             }
@@ -297,19 +493,21 @@ fn execute(options: Options) -> Result<(), String> {
             json!({"at": now(), "event": "module_started", "module": module, "attempt": attempts}),
         )
         .map_err(|error| error.to_string())?;
-        state.modules.insert(
-            module.clone(),
-            ModuleState {
-                status: "running".to_owned(),
-                attempts,
-                updated_at: now(),
-                tasks: stage
-                    .tasks
-                    .iter()
-                    .map(|task| (task.id.clone(), "pending".to_owned()))
-                    .collect(),
-            },
-        );
+        let module_state = state
+            .modules
+            .entry(module.clone())
+            .or_insert_with(|| ModuleState {
+                status: "pending".to_owned(),
+                attempts: 0,
+                updated_at: 0,
+                tasks: BTreeMap::new(),
+            });
+        module_state.status = "running".to_owned();
+        module_state.attempts = attempts;
+        module_state.updated_at = now();
+        for task in &selected_tasks {
+            module_state.tasks.entry(task.clone()).or_default().status = "pending".to_owned();
+        }
         state.updated_at = now();
         save_state(&state_path, &state)?;
 
@@ -317,13 +515,24 @@ fn execute(options: Options) -> Result<(), String> {
         let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
         File::create(&progress_path).map_err(|error| error.to_string())?;
         let (succeeded, exit_code) = if let Some(dashboard) = &mut dashboard {
-            dashboard.run_module(&installer, &options.forwarded, stage_index, &progress_path)?
+            dashboard.run_module(
+                &installer,
+                &options.forwarded,
+                stage_index,
+                &progress_path,
+                &selected_tasks,
+            )?
         } else {
             let status = Command::new("bash")
                 .arg(&installer)
                 .args(&options.forwarded)
                 .arg("--only")
                 .arg(&module)
+                .args(if selected_tasks.is_empty() {
+                    Vec::new()
+                } else {
+                    vec!["--tasks".to_owned(), selected_tasks.join(",")]
+                })
                 .env(
                     "MISTBORN_RUNNER_BINARY",
                     env::current_exe().map_err(|error| error.to_string())?,
@@ -343,7 +552,9 @@ fn execute(options: Options) -> Result<(), String> {
                 }
                 module_state
                     .tasks
-                    .insert(event.task.clone(), event.state.clone());
+                    .entry(event.task.clone())
+                    .or_default()
+                    .status = event.state.clone();
                 let action = stage
                     .tasks
                     .iter()
@@ -355,19 +566,24 @@ fn execute(options: Options) -> Result<(), String> {
             }
             if !succeeded {
                 for (task_id, task_state) in &mut module_state.tasks {
-                    if task_state == "started" {
-                        *task_state = "failed".to_owned();
+                    if task_state.status == "started" {
+                        task_state.status = "failed".to_owned();
                         log.emit(json!({"at": now(), "event": "task_failed", "module": module, "task": task_id}))
                             .map_err(|error| error.to_string())?;
                     }
                 }
                 if module_state
                     .tasks
-                    .values()
-                    .all(|task_state| task_state == "pending")
+                    .iter()
+                    .filter(|(id, _)| selected_tasks.contains(id))
+                    .all(|(_, task_state)| task_state.status == "pending")
                 {
-                    if let Some((task_id, task_state)) = module_state.tasks.iter_mut().next() {
-                        *task_state = "failed".to_owned();
+                    if let Some((task_id, task_state)) = module_state
+                        .tasks
+                        .iter_mut()
+                        .find(|(id, _)| selected_tasks.contains(id))
+                    {
+                        task_state.status = "failed".to_owned();
                         log.emit(json!({"at": now(), "event": "task_failed", "module": module, "task": task_id}))
                             .map_err(|error| error.to_string())?;
                     }
@@ -379,7 +595,31 @@ fn execute(options: Options) -> Result<(), String> {
             .modules
             .get_mut(module)
             .expect("module state was just inserted");
-        module_state.status = if succeeded { "completed" } else { "failed" }.to_owned();
+        if succeeded {
+            for task in &stage.tasks {
+                if selected_tasks.contains(&task.id) {
+                    let saved = module_state.tasks.entry(task.id.clone()).or_default();
+                    if saved.status == "pending" || saved.status == "started" {
+                        saved.status = "skipped".to_owned();
+                    }
+                    saved.applied_revision = task.revision;
+                    saved.input_fingerprint = task_fingerprint(task);
+                    saved.updated_at = now();
+                }
+            }
+        }
+        module_state.status = if !succeeded {
+            "failed"
+        } else if stage
+            .tasks
+            .iter()
+            .all(|task| task_is_current(module_state.tasks.get(&task.id), task))
+        {
+            "completed"
+        } else {
+            "partial"
+        }
+        .to_owned();
         module_state.attempts = attempts;
         module_state.updated_at = now();
         state.updated_at = now();
@@ -565,11 +805,13 @@ mod tests {
         .unwrap();
 
         let options = || Options {
+            command: RunCommand::Apply,
             collection: "test".to_owned(),
             root: root.clone(),
             state_dir: state_dir.clone(),
             log_dir: log_dir.clone(),
             forwarded: Vec::new(),
+            target: None,
         };
         assert!(execute(options()).is_err());
         execute(options()).unwrap();
@@ -591,5 +833,43 @@ mod tests {
         }));
 
         fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn version_one_state_is_migrated_without_losing_task_results() {
+        let base = temporary_directory();
+        let path = base.join("server.json");
+        fs::write(
+            &path,
+            r#"{"version":1,"collection":"server","updated_at":1,"modules":{"security":{"status":"completed","attempts":1,"updated_at":1,"tasks":{"ssh":"completed"}}}}"#,
+        )
+        .unwrap();
+
+        let (state, migrated) = load_state(&path, "server").unwrap();
+        assert!(migrated);
+        assert_eq!(state.version, 2);
+        assert_eq!(state.modules["security"].tasks["ssh"].status, "completed");
+        assert_eq!(state.modules["security"].tasks["ssh"].applied_revision, 1);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn task_revision_invalidates_a_previous_pass() {
+        let task = plan::Task {
+            id: "firewall".to_owned(),
+            title: "Firewall".to_owned(),
+            action: "configure".to_owned(),
+            weight: 1,
+            revision: 2,
+            inputs: Vec::new(),
+            requires_confirmation: true,
+        };
+        let state = TaskState {
+            status: "completed".to_owned(),
+            applied_revision: 1,
+            ..TaskState::default()
+        };
+
+        assert!(!task_is_current(Some(&state), &task));
     }
 }

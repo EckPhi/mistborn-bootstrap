@@ -4,9 +4,10 @@ trap 'ui_error "Setup failed on line $LINENO"' ERR
 MISTBORN_DRY_RUN=0
 MISTBORN_YES=0
 MISTBORN_ONLY=""
+MISTBORN_TASKS=""
 MISTBORN_MODULES=( common docker zsh tailscale runtipi rclone security toolset )
 export MISTBORN_TOOL_B64='IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLUVldW8gcGlwZWZhaWwKClJVTlRJUElfUEFUSD0iJHtSVU5USVBJX1BBVEg6LS9vcHQvcnVudGlwaX0iCgpkaWUoKSB7IHByaW50ZiAnZXJyb3I6ICVzXG4nICIkKiIgPiYyOyBleGl0IDE7IH0KdGFza19ldmVudCgpIHsKICBbWyAtbiAiJHtNSVNUQk9STl9QUk9HUkVTU19GSUxFOi19IiBdXSB8fCByZXR1cm4gMAogIHByaW50ZiAnJXNcdCVzXHQlc1xuJyAiJDEiICIkMiIgIiQzIiA+PiIkTUlTVEJPUk5fUFJPR1JFU1NfRklMRSIgfHwgdHJ1ZQp9CnJ1bnRpcGlfY2xpKCkgewogIGlmIFtbIC14ICIkUlVOVElQSV9QQVRIL3J1bnRpcGktY2xpIiBdXTsgdGhlbiBwcmludGYgJyVzXG4nICIkUlVOVElQSV9QQVRIL3J1bnRpcGktY2xpIgogIGVsaWYgY29tbWFuZCAtdiBydW50aXBpLWNsaSA+L2Rldi9udWxsOyB0aGVuIGNvbW1hbmQgLXYgcnVudGlwaS1jbGkKICBlbHNlIGRpZSAicnVudGlwaS1jbGkgbm90IGZvdW5kIHVuZGVyICRSVU5USVBJX1BBVEggb3IgUEFUSCI7IGZpCn0KcnVuX3J1bnRpcGkoKSB7ICIkKHJ1bnRpcGlfY2xpKSIgIiRAIjsgfQphcHBfcmVmcygpIHsKICBsb2NhbCBzdG9yZSBhcHAKICBmb3Igc3RvcmUgaW4gIiRSVU5USVBJX1BBVEgiL2FwcHMvKjsgZG8KICAgIFtbIC1kICIkc3RvcmUiIF1dIHx8IGNvbnRpbnVlCiAgICBmb3IgYXBwIGluICIkc3RvcmUiLyo7IGRvIFtbIC1kICIkYXBwIiBdXSAmJiBwcmludGYgJyVzOiVzXG4nICIkKGJhc2VuYW1lICIkYXBwIikiICIkKGJhc2VuYW1lICIkc3RvcmUiKSI7IGRvbmUKICBkb25lCn0Kc25hcHNob3RfYXBwcygpIHsgbG9jYWwgcmVmOyB3aGlsZSBJRlM9IHJlYWQgLXIgcmVmOyBkbyBydW5fcnVudGlwaSBhcHAgYmFja3VwICIkcmVmIjsgZG9uZTsgfQpkb2N0b3IoKSB7CiAgbG9jYWwgZmFpbHVyZXM9MAogIHByaW50ZiAnTWlzdGJvcm4gaG9zdCBkaWFnbm9zdGljc1xuJwogIGZvciBjb21tYW5kIGluIGRvY2tlciB0YWlsc2NhbGUgcmNsb25lIHVmdyBmYWlsMmJhbi1jbGllbnQ7IGRvCiAgICBpZiBjb21tYW5kIC12ICIkY29tbWFuZCIgPi9kZXYvbnVsbCAyPiYxOyB0aGVuIHByaW50ZiAnICBQQVNTICAlcyBpbnN0YWxsZWRcbicgIiRjb21tYW5kIjsgZWxzZSBwcmludGYgJyAgV0FSTiAgJXMgbWlzc2luZ1xuJyAiJGNvbW1hbmQiOyBmaQogIGRvbmUKICBpZiBbWyAtZCAiJFJVTlRJUElfUEFUSCIgXV07IHRoZW4gcHJpbnRmICcgIFBBU1MgIFJ1bnRpcGkgZGlyZWN0b3J5OiAlc1xuJyAiJFJVTlRJUElfUEFUSCI7IGVsc2UgcHJpbnRmICcgIEZBSUwgIFJ1bnRpcGkgZGlyZWN0b3J5IG1pc3Npbmdcbic7IGZhaWx1cmVzPTE7IGZpCiAgaWYgZG9ja2VyIGluZm8gPi9kZXYvbnVsbCAyPiYxOyB0aGVuIHByaW50ZiAnICBQQVNTICBEb2NrZXIgZGFlbW9uIHJlYWNoYWJsZVxuJzsgZWxzZSBwcmludGYgJyAgRkFJTCAgRG9ja2VyIGRhZW1vbiB1bnJlYWNoYWJsZVxuJzsgZmFpbHVyZXM9MTsgZmkKICBpZiBzeXN0ZW1jdGwgaXMtYWN0aXZlIC0tcXVpZXQgZmFpbDJiYW47IHRoZW4gcHJpbnRmICcgIFBBU1MgIGZhaWwyYmFuIGFjdGl2ZVxuJzsgZWxzZSBwcmludGYgJyAgV0FSTiAgZmFpbDJiYW4gaW5hY3RpdmVcbic7IGZpCiAgaWYgdWZ3IHN0YXR1cyAyPi9kZXYvbnVsbCB8IGdyZXAgLXEgJ1N0YXR1czogYWN0aXZlJzsgdGhlbiBwcmludGYgJyAgUEFTUyAgVUZXIGFjdGl2ZVxuJzsgZWxzZSBwcmludGYgJyAgV0FSTiAgVUZXIGluYWN0aXZlXG4nOyBmaQogIHJldHVybiAiJGZhaWx1cmVzIgp9CnN0YXR1cygpIHsKICBkb2N0b3IgfHwgdHJ1ZQogIHByaW50ZiAnXG5TZXJ2aWNlIHN0YXR1c1xuJwogIGxvY2FsIHNlcnZpY2UKICBmb3Igc2VydmljZSBpbiBkb2NrZXIgdGFpbHNjYWxlZCBmYWlsMmJhbjsgZG8KICAgIGlmICEgY29tbWFuZCAtdiBzeXN0ZW1jdGwgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICAgIHByaW50ZiAnICBJTkZPICBzeXN0ZW1kIHVuYXZhaWxhYmxlOyBjYW5ub3QgaW5zcGVjdCAlc1xuJyAiJHNlcnZpY2UiCiAgICAgIGJyZWFrCiAgICBlbGlmIHN5c3RlbWN0bCBpcy1hY3RpdmUgLS1xdWlldCAiJHNlcnZpY2UiOyB0aGVuCiAgICAgIHByaW50ZiAnICBQQVNTICAlcyBhY3RpdmVcbicgIiRzZXJ2aWNlIgogICAgZWxzZQogICAgICBwcmludGYgJyAgV0FSTiAgJXMgaW5hY3RpdmVcbicgIiRzZXJ2aWNlIgogICAgZmkKICBkb25lCiAgaWYgY29tbWFuZCAtdiB0YWlsc2NhbGUgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICBwcmludGYgJ1xuVGFpbHNjYWxlXG4nCiAgICB0YWlsc2NhbGUgc3RhdHVzIHx8IHRydWUKICBmaQp9CmZpeF9zZXJ2aWNlcygpIHsKICBsb2NhbCBzZXJ2aWNlIGNoYW5nZWQ9MAogIFtbICIkRVVJRCIgPT0gMCBdXSB8fCBkaWUgInJ1biAnbWlzdGJvcm4gZml4JyB3aXRoIHN1ZG8iCiAgY29tbWFuZCAtdiBzeXN0ZW1jdGwgPi9kZXYvbnVsbCAyPiYxIHx8IGRpZSAic3lzdGVtZCBpcyByZXF1aXJlZCB0byByZXBhaXIgc2VydmljZXMiCiAgZm9yIHNlcnZpY2UgaW4gZG9ja2VyIHRhaWxzY2FsZWQ7IGRvCiAgICBpZiAhIGNvbW1hbmQgLXYgIiRzZXJ2aWNlIiA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgICAgcHJpbnRmICcgIFNLSVAgICVzIGlzIG5vdCBpbnN0YWxsZWRcbicgIiRzZXJ2aWNlIgogICAgICBjb250aW51ZQogICAgZmkKICAgIGlmIHN5c3RlbWN0bCBpcy1hY3RpdmUgLS1xdWlldCAiJHNlcnZpY2UiICYmIHN5c3RlbWN0bCBpcy1lbmFibGVkIC0tcXVpZXQgIiRzZXJ2aWNlIjsgdGhlbgogICAgICBwcmludGYgJyAgUEFTUyAgJXMgaXMgYWxyZWFkeSBlbmFibGVkIGFuZCBhY3RpdmVcbicgIiRzZXJ2aWNlIgogICAgZWxzZQogICAgICBwcmludGYgJyAgRklYICAgZW5hYmxpbmcgYW5kIHN0YXJ0aW5nICVzXG4nICIkc2VydmljZSIKICAgICAgc3lzdGVtY3RsIGVuYWJsZSAtLW5vdyAiJHNlcnZpY2UiCiAgICAgIGNoYW5nZWQ9MQogICAgZmkKICBkb25lCiAgaWYgW1sgIiRjaGFuZ2VkIiA9PSAwIF1dOyB0aGVuIHByaW50ZiAnQ29yZSBzZXJ2aWNlcyBhcmUgYWxyZWFkeSBoZWFsdGh5LlxuJzsgZmkKICBwcmludGYgJ1VGVyBhbmQgU1NIIHNldHRpbmdzIGFyZSBsZWZ0IHVuY2hhbmdlZDsgcmV2aWV3IHRoZW0gd2l0aCBtaXN0Ym9ybiBzZWN1cml0eS1zdGF0dXMuXG4nCn0KdXBkYXRlX3J1bnRpcGkoKSB7CiAgcHJpbnRmICdVcGRhdGluZyBSdW50aXBpIGNvcmUgKHdpdGggYXBwIHNuYXBzaG90cykuLi5cbicKICB0YXNrX2V2ZW50IGNvcmUgdXBkYXRlIHN0YXJ0ZWQKICBzbmFwc2hvdF9hcHBzIDwgPChhcHBfcmVmcykKICBydW5fcnVudGlwaSB1cGRhdGUgbGF0ZXN0CiAgdGFza19ldmVudCBjb3JlIHVwZGF0ZSBjb21wbGV0ZWQKICBwcmludGYgJ1xuVXBkYXRpbmcgYXBwIHN0b3Jlcy4uLlxuJwogIHRhc2tfZXZlbnQgYXBwc3RvcmVzIHVwZGF0ZSBzdGFydGVkCiAgcnVuX3J1bnRpcGkgYXBwc3RvcmUgdXBkYXRlCiAgdGFza19ldmVudCBhcHBzdG9yZXMgdXBkYXRlIGNvbXBsZXRlZAogIHByaW50ZiAnXG5VcGRhdGluZyBhcHBzICh3aXRoIHNuYXBzaG90cykuLi5cbicKICB0YXNrX2V2ZW50IGFwcHMgdXBkYXRlIHN0YXJ0ZWQKICB1cGRhdGVfYXBwcwogIHRhc2tfZXZlbnQgYXBwcyB1cGRhdGUgY29tcGxldGVkCiAgcHJpbnRmICdcbk1pc3Rib3JuIHVwZGF0ZXMgY29tcGxldGUuXG4nCn0KdXBkYXRlX2Jvb3RzdHJhcCgpIHsKICBbWyAiJEVVSUQiID09IDAgXV0gfHwgZGllICJydW4gJ21pc3Rib3JuIHVwZ3JhZGUnIHdpdGggc3VkbyIKICBsb2NhbCBsYXRlc3QgY3VycmVudCB0ZW1wX2RpciBpbnN0YWxsZXJfdXJsCiAgdGFza19ldmVudCBib290c3RyYXAgcmVsZWFzZSBzdGFydGVkCiAgcHJpbnRmICdDaGVja2luZyB0aGUgbGF0ZXN0IHN0YWJsZSBNaXN0Ym9ybiBCb290c3RyYXAgcmVsZWFzZS4uLlxuJwogIGxhdGVzdD0iJChjdXJsIC1mc1NMIGh0dHBzOi8vYXBpLmdpdGh1Yi5jb20vcmVwb3MvRWNrUGhpL21pc3Rib3JuLWJvb3RzdHJhcC9yZWxlYXNlcy9sYXRlc3QgfCBzZWQgLW5FICdzL15bWzpzcGFjZTpdXSoidGFnX25hbWUiOltbOnNwYWNlOl1dKiIodlswLTldK1wuWzAtOV0rXC5bMC05XSspIi4qL1wxL3AnIHwgaGVhZCAtbjEpIiB8fCBkaWUgImNvdWxkIG5vdCBjaGVjayBHaXRIdWIgcmVsZWFzZXMiCiAgW1sgIiRsYXRlc3QiID1+IF52WzAtOV0rXC5bMC05XStcLlswLTldKyQgXV0gfHwgZGllICJHaXRIdWIgcmV0dXJuZWQgbm8gc3RhYmxlIGJvb3RzdHJhcCByZWxlYXNlIgogIHRhc2tfZXZlbnQgYm9vdHN0cmFwIHJlbGVhc2UgY29tcGxldGVkCiAgY3VycmVudD0iJHtNSVNUQk9STl9CT09UU1RSQVBfVkVSU0lPTjotdjAuMC4wfSIKICBjdXJyZW50PSIke2N1cnJlbnQjdn0iCiAgbGF0ZXN0PSIke2xhdGVzdCN2fSIKICBpZiBbWyAiJChwcmludGYgJyVzXG4lc1xuJyAiJGN1cnJlbnQiICIkbGF0ZXN0IiB8IHNvcnQgLVYgfCB0YWlsIC1uMSkiID09ICIkY3VycmVudCIgXV07IHRoZW4KICAgIHByaW50ZiAnTWlzdGJvcm4gQm9vdHN0cmFwICVzIGlzIGFscmVhZHkgY3VycmVudC5cbicgIiRjdXJyZW50IgogICAgdGFza19ldmVudCBib290c3RyYXAgaW5zdGFsbGVyIHNraXBwZWQKICAgIHJldHVybiAwCiAgZmkKICBpbnN0YWxsZXJfdXJsPSJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vRWNrUGhpL21pc3Rib3JuLWJvb3RzdHJhcC92JHtsYXRlc3R9L2luc3RhbGwuc2giCiAgdGVtcF9kaXI9IiQobWt0ZW1wIC1kKSIKICB0cmFwICdybSAtcmYgIiR0ZW1wX2RpciInIFJFVFVSTgogIHRhc2tfZXZlbnQgYm9vdHN0cmFwIGluc3RhbGxlciBzdGFydGVkCiAgcHJpbnRmICdVcGRhdGluZyBNaXN0Ym9ybiBCb290c3RyYXAgJXMg4oaSICVzLi4uXG4nICIkY3VycmVudCIgIiRsYXRlc3QiCiAgY3VybCAtZnNTTCAiJGluc3RhbGxlcl91cmwiIC1vICIkdGVtcF9kaXIvaW5zdGFsbC5zaCIgfHwgZGllICJjb3VsZCBub3QgZG93bmxvYWQgYm9vdHN0cmFwIGluc3RhbGxlciIKICBNSVNUQk9STl9WRVJTSU9OPSJ2JHtsYXRlc3R9IiBNSVNUQk9STl9UVUk9MCBiYXNoICIkdGVtcF9kaXIvaW5zdGFsbC5zaCIgc2VydmVyIC0teWVzCiAgdGFza19ldmVudCBib290c3RyYXAgaW5zdGFsbGVyIGNvbXBsZXRlZAogIHByaW50ZiAnTWlzdGJvcm4gQm9vdHN0cmFwIHVwZGF0ZWQgdG8gJXMuXG4nICIkbGF0ZXN0Igp9CnVwZGF0ZV9hcHBzKCkgewogIGxvY2FsIGJhY2t1cD0xIHJlZnM9KCkgcmVmCiAgW1sgIiR7MTotfSIgPT0gLS1uby1iYWNrdXAgXV0gJiYgeyBiYWNrdXA9MDsgc2hpZnQ7IH0KICBpZiBbWyAkIyAtZ3QgMCBdXTsgdGhlbiByZWZzPSgiJEAiKTsgZWxzZSBtYXBmaWxlIC10IHJlZnMgPCA8KGFwcF9yZWZzKTsgZmkKICBmb3IgcmVmIGluICIke3JlZnNbQF19IjsgZG8gW1sgIiRiYWNrdXAiID09IDEgXV0gJiYgcnVuX3J1bnRpcGkgYXBwIGJhY2t1cCAiJHJlZiI7IHJ1bl9ydW50aXBpIGFwcCB1cGRhdGUgIiRyZWYiOyBkb25lCn0KdXNhZ2UoKSB7CiAgY2F0IDw8J0VPRicKVXNhZ2U6IG1pc3Rib3JuIENPTU1BTkQgW0FSR1NdCiAgc3RhdHVzICAgICAgICAgICAgICAgICAgICAgICBzaG93IGluc3RhbGxhdGlvbiwgc2VydmljZSBhbmQgVGFpbHNjYWxlIHN0YXR1cwogIGRvY3RvciAgICAgICAgICAgICAgICAgICAgICAgYXVkaXQgRG9ja2VyLCBSdW50aXBpLCBUYWlsc2NhbGUsIHJjbG9uZSBhbmQgc2VjdXJpdHkKICBmaXggICAgICAgICAgICAgICAgICAgICAgICAgIGVuYWJsZSBhbmQgc3RhcnQgaW5zdGFsbGVkIERvY2tlci9UYWlsc2NhbGUgc2VydmljZXMKICBzZWN1cml0eS1zdGF0dXMgICAgICAgICAgICAgIHNob3cgU1NILCBVRlcsIGZhaWwyYmFuIGFuZCBUYWlsc2NhbGUgc3RhdHVzCiAgdGFpbHNjYWxlLXN0YXR1cyAgICAgICAgICAgICBzaG93IFRhaWxzY2FsZSBzdGF0dXMKICByY2xvbmUtY29uZmlnICAgICAgICAgICAgICAgIG9wZW4gcmNsb25lJ3MgY29uZmlndXJhdGlvbiBVSQogIHVwZGF0ZS1hcHBzIFstLW5vLWJhY2t1cF0gW0FQUDpTVE9SRSAuLi5dCiAgdXBkYXRlLWNvcmUgWy0tbm8tYmFja3VwXSBbVkVSU0lPTl0KICB1cGRhdGUtYXBwc3RvcmVzCiAgdXBncmFkZSAgICAgICAgICAgICAgICAgICAgICB1cGdyYWRlIE1pc3Rib3JuIEJvb3RzdHJhcCB0byB0aGUgbGF0ZXN0IHN0YWJsZSByZWxlYXNlCiAgdXBkYXRlICAgICAgICAgICAgICAgICAgICAgICBhbGlhcyBmb3IgdXBncmFkZQogIHVwZGF0ZS1ydW50aXBpICAgICAgICAgICAgICAgdXBkYXRlIFJ1bnRpcGkgY29yZSwgYXBwIHN0b3JlcyBhbmQgYXBwcyAod2l0aCBiYWNrdXBzKQpFT0YKfQpjYXNlICIkezE6LX0iIGluCiAgaGVscHwtaHwtLWhlbHB8JycpIHVzYWdlIDs7CiAgc3RhdHVzKSBzdGF0dXMgOzsKICBkb2N0b3IpIGRvY3RvciA7OwogIGZpeCkgZml4X3NlcnZpY2VzIDs7CiAgc2VjdXJpdHktc3RhdHVzKSBzc2hkIC1UIDI+L2Rldi9udWxsIHwgZ3JlcCAtRSAncGFzc3dvcmRhdXRoZW50aWNhdGlvbnxwZXJtaXRyb290bG9naW58XnBvcnQnOyB1Zncgc3RhdHVzIHZlcmJvc2U7IGZhaWwyYmFuLWNsaWVudCBzdGF0dXMgc3NoZCB8fCB0cnVlOyB0YWlsc2NhbGUgc3RhdHVzIHx8IHRydWUgOzsKICB0YWlsc2NhbGUtc3RhdHVzKSB0YWlsc2NhbGUgc3RhdHVzIDs7CiAgcmNsb25lLWNvbmZpZykgcmNsb25lIGNvbmZpZyA7OwogIHVwZGF0ZS1hcHBzKSBzaGlmdDsgdXBkYXRlX2FwcHMgIiRAIiA7OwogIHVwZGF0ZS1jb3JlKSBzaGlmdDsgYmFja3VwPTE7IFtbICIkezE6LX0iID09IC0tbm8tYmFja3VwIF1dICYmIHsgYmFja3VwPTA7IHNoaWZ0OyB9OyBbWyAiJGJhY2t1cCIgPT0gMSBdXSAmJiBzbmFwc2hvdF9hcHBzIDwgPChhcHBfcmVmcyk7IHJ1bl9ydW50aXBpIHVwZGF0ZSAiJHsxOi1sYXRlc3R9IiA7OwogIHVwZGF0ZS1hcHBzdG9yZXMpIHJ1bl9ydW50aXBpIGFwcHN0b3JlIHVwZGF0ZSA7OwogIHVwZ3JhZGV8dXBkYXRlKSB1cGRhdGVfYm9vdHN0cmFwIDs7CiAgdXBkYXRlLXJ1bnRpcGkpIHVwZGF0ZV9ydW50aXBpIDs7CiAgKikgZGllICJ1bmtub3duIGNvbW1hbmQ6ICQxIiA7Owplc2FjCg=='
-export MISTBORN_UPDATE_PLAN_B64='dmVyc2lvbiA9IDEKY29sbGVjdGlvbiA9ICJ1cGRhdGUiCgpbW3N0YWdlc11dCmlkID0gImJvb3RzdHJhcCIKdGl0bGUgPSAiTWlzdGJvcm4gQm9vdHN0cmFwIgpoZWxwID0gIkNoZWNrcyB0aGUgbGF0ZXN0IHN0YWJsZSByZWxlYXNlIGFuZCByZXJ1bnMgaXRzIGluc3RhbGxlciB0byByZWZyZXNoIHRoZSBNaXN0Ym9ybiB0b29sIHdoaWxlIHJlc3VtaW5nIGNvbXBsZXRlZCBzZXR1cCBzdGFnZXMuIgpbW3N0YWdlcy50YXNrc11dCmlkID0gInJlbGVhc2UiCnRpdGxlID0gIkNoZWNrIGxhdGVzdCBzdGFibGUgYm9vdHN0cmFwIHJlbGVhc2UiCmFjdGlvbiA9ICJHaXRIdWIgcmVsZWFzZXMvbGF0ZXN0Igp3ZWlnaHQgPSAxCltbc3RhZ2VzLnRhc2tzXV0KaWQgPSAiaW5zdGFsbGVyIgp0aXRsZSA9ICJSZWZyZXNoIE1pc3Rib3JuIHJ1bm5lciBhbmQgY29tbWFuZCIKYWN0aW9uID0gInJ1biB0YWdnZWQgc2VydmVyIGluc3RhbGxlciAocmVzdW1lIGNvbXBsZXRlZCBzdGFnZXMpIgp3ZWlnaHQgPSAzCg=='
+export MISTBORN_UPDATE_PLAN_B64='dmVyc2lvbiA9IDIKY29sbGVjdGlvbiA9ICJ1cGRhdGUiCgpbW3N0YWdlc11dCmlkID0gImJvb3RzdHJhcCIKdGl0bGUgPSAiTWlzdGJvcm4gQm9vdHN0cmFwIgpoZWxwID0gIkNoZWNrcyB0aGUgbGF0ZXN0IHN0YWJsZSByZWxlYXNlIGFuZCByZXJ1bnMgaXRzIGluc3RhbGxlciB0byByZWZyZXNoIHRoZSBNaXN0Ym9ybiB0b29sIHdoaWxlIHJlc3VtaW5nIGNvbXBsZXRlZCBzZXR1cCBzdGFnZXMuIgpbW3N0YWdlcy50YXNrc11dCmlkID0gInJlbGVhc2UiCnRpdGxlID0gIkNoZWNrIGxhdGVzdCBzdGFibGUgYm9vdHN0cmFwIHJlbGVhc2UiCmFjdGlvbiA9ICJHaXRIdWIgcmVsZWFzZXMvbGF0ZXN0Igp3ZWlnaHQgPSAxCltbc3RhZ2VzLnRhc2tzXV0KaWQgPSAiaW5zdGFsbGVyIgp0aXRsZSA9ICJSZWZyZXNoIE1pc3Rib3JuIHJ1bm5lciBhbmQgY29tbWFuZCIKYWN0aW9uID0gInJ1biB0YWdnZWQgc2VydmVyIGluc3RhbGxlciAocmVzdW1lIGNvbXBsZXRlZCBzdGFnZXMpIgp3ZWlnaHQgPSAzCg=='
 # shellcheck shell=bash
 
 ui_is_terminal() { [[ -t 1 && -z "${NO_COLOR:-}" ]]; }
@@ -32,6 +33,11 @@ mistborn_task_event() {
 mistborn_task_start() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" started; }
 mistborn_task_complete() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" completed; }
 mistborn_task_skip() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" skipped; }
+
+mistborn_task_selected() {
+  local task="$1"
+  [[ -z "${MISTBORN_TASKS:-}" || ",${MISTBORN_TASKS}," == *",${task},"* ]]
+}
 
 ui_confirm() {
   local prompt="$1" reply
@@ -106,12 +112,12 @@ module_common_description="System prerequisites"
 module_common_apply() {
   ui_step "$module_common_description"
   mistborn_require_root
-  mistborn_task_start apt-index
-  mistborn_run apt-get update
-  mistborn_task_complete apt-index
-  mistborn_task_start base-packages
-  mistborn_apt_install ca-certificates curl git
-  mistborn_task_complete base-packages
+  if mistborn_task_selected apt-index; then
+    mistborn_task_start apt-index; mistborn_run apt-get update; mistborn_task_complete apt-index
+  fi
+  if mistborn_task_selected base-packages; then
+    mistborn_task_start base-packages; mistborn_apt_install ca-certificates curl git; mistborn_task_complete base-packages
+  fi
   ui_success "$module_common_description"
 }
 # shellcheck shell=bash
@@ -120,6 +126,7 @@ module_docker_description="Docker Engine"
 
 module_docker_apply() {
   ui_step "$module_docker_description"
+  if mistborn_task_selected engine; then
   mistborn_task_start engine
   if command -v docker >/dev/null 2>&1; then
     ui_info "Docker already installed"
@@ -127,9 +134,10 @@ module_docker_apply() {
     mistborn_apt_install docker.io
   fi
   mistborn_task_complete engine
-  mistborn_task_start service
-  mistborn_run systemctl enable --now docker
-  mistborn_task_complete service
+  fi
+  if mistborn_task_selected service; then
+    mistborn_task_start service; mistborn_run systemctl enable --now docker; mistborn_task_complete service
+  fi
   ui_success "$module_docker_description"
 }
 # shellcheck shell=bash
@@ -143,10 +151,13 @@ module_zsh_apply() {
   [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
 
   ui_step "$module_zsh_description for $user"
+  if mistborn_task_selected packages; then
   mistborn_task_start packages
   mistborn_apt_install zsh git
   mistborn_task_complete packages
+  fi
   custom_dir="$home/.oh-my-zsh"
+  if mistborn_task_selected oh-my-zsh; then
   mistborn_task_start oh-my-zsh
   if [[ ! -d "$custom_dir/.git" ]]; then
     mistborn_run sudo -u "$user" git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$custom_dir"
@@ -154,6 +165,8 @@ module_zsh_apply() {
     ui_info "Oh My Zsh already installed"
   fi
   mistborn_task_complete oh-my-zsh
+  fi
+  if mistborn_task_selected powerlevel10k; then
   mistborn_task_start powerlevel10k
   if [[ ! -d "$custom_dir/custom/themes/powerlevel10k/.git" ]]; then
     mistborn_run sudo -u "$user" git clone --depth 1 https://github.com/romkatv/powerlevel10k.git \
@@ -162,7 +175,9 @@ module_zsh_apply() {
     ui_info "Powerlevel10k already installed"
   fi
   mistborn_task_complete powerlevel10k
+  fi
 
+  if mistborn_task_selected configuration; then
   mistborn_task_start configuration
   zshrc="$home/.zshrc"
   if [[ -f "$zshrc" && ! -f "$zshrc.mistborn-backup" ]]; then
@@ -183,6 +198,7 @@ module_zsh_apply() {
   fi
   mistborn_task_complete configuration
   mistborn_run chsh -s "$(command -v zsh)" "$user"
+  fi
   ui_success "$module_zsh_description"
 }
 # shellcheck shell=bash
@@ -192,6 +208,7 @@ module_tailscale_description="Tailscale"
 module_tailscale_apply() {
   local sysctl_file=/etc/sysctl.d/99-mistborn-tailscale.conf
   ui_step "$module_tailscale_description"
+  if mistborn_task_selected install; then
   mistborn_task_start install
   if command -v tailscale >/dev/null 2>&1; then
     ui_info "Tailscale already installed"
@@ -201,7 +218,8 @@ module_tailscale_apply() {
     curl -fsSL https://tailscale.com/install.sh | sh
   fi
   mistborn_task_complete install
-  if [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]]; then
+  fi
+  if mistborn_task_selected forwarding && [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]]; then
     mistborn_task_start forwarding
     if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
       ui_info "Would enable persistent IPv4 and IPv6 forwarding in $sysctl_file"
@@ -210,12 +228,13 @@ module_tailscale_apply() {
       sysctl -p "$sysctl_file"
     fi
     mistborn_task_complete forwarding
-  else
+  elif mistborn_task_selected forwarding; then
     mistborn_task_skip forwarding
   fi
   local args=(up)
   [[ "${MISTBORN_TAILSCALE_SSH:-0}" == 1 ]] && args+=(--ssh)
   [[ "${MISTBORN_TAILSCALE_EXIT_NODE:-0}" == 1 ]] && args+=(--advertise-exit-node)
+  if mistborn_task_selected connect; then
   mistborn_task_start connect
   if [[ -n "${TAILSCALE_AUTH_KEY:-}" ]]; then
     args+=(--auth-key "$TAILSCALE_AUTH_KEY")
@@ -224,11 +243,12 @@ module_tailscale_apply() {
     mistborn_run_interactive tailscale "${args[@]}"
   fi
   mistborn_task_complete connect
-  if [[ "${MISTBORN_TAILSCALE_AUTO_UPDATE:-0}" == 1 ]]; then
+  fi
+  if mistborn_task_selected auto-update && [[ "${MISTBORN_TAILSCALE_AUTO_UPDATE:-0}" == 1 ]]; then
     mistborn_task_start auto-update
     mistborn_run tailscale set --auto-update
     mistborn_task_complete auto-update
-  else
+  elif mistborn_task_selected auto-update; then
     mistborn_task_skip auto-update
   fi
   ui_success "$module_tailscale_description"
@@ -239,6 +259,7 @@ module_runtipi_description="Runtipi"
 
 module_runtipi_apply() {
   ui_step "$module_runtipi_description"
+  mistborn_task_selected install || return 0
   mistborn_task_start install
   if command -v runtipi-cli >/dev/null 2>&1 || [[ -x /opt/runtipi/runtipi-cli ]]; then
     ui_info "Runtipi already installed"
@@ -260,10 +281,10 @@ module_rclone_apply() {
   home="$(mistborn_user_home "$user")"
   [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
   ui_step "$module_rclone_description"
-  mistborn_task_start package
-  mistborn_apt_install rclone
-  mistborn_task_complete package
-  if [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
+  if mistborn_task_selected package; then
+    mistborn_task_start package; mistborn_apt_install rclone; mistborn_task_complete package
+  fi
+  if mistborn_task_selected configuration && [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
     mistborn_task_start configuration
     if [[ "$user" == root ]]; then
       mistborn_run_interactive env HOME="$home" rclone config
@@ -271,7 +292,7 @@ module_rclone_apply() {
       mistborn_run_interactive runuser -u "$user" -- env HOME="$home" rclone config
     fi
     mistborn_task_complete configuration
-  else
+  elif mistborn_task_selected configuration; then
     mistborn_task_skip configuration
   fi
   ui_success "$module_rclone_description"
@@ -280,16 +301,77 @@ module_rclone_apply() {
 
 module_security_description="SSH, UFW, and fail2ban hardening"
 
+mistborn_valid_ipv4_cidr() {
+  local cidr="$1" address prefix octet
+  local -a octets
+  [[ "$cidr" == */* ]] || return 1
+  address="${cidr%/*}"
+  prefix="${cidr##*/}"
+  [[ "$prefix" =~ ^[0-9]+$ ]] && ((10#$prefix <= 32)) || return 1
+  IFS=. read -r -a octets <<<"$address"
+  [[ "${#octets[@]}" -eq 4 ]] || return 1
+  for octet in "${octets[@]}"; do
+    [[ "$octet" =~ ^[0-9]+$ ]] && ((10#$octet <= 255)) || return 1
+  done
+}
+
+mistborn_configure_plex_ufw() {
+  local profile=/etc/ufw/applications.d/plexmediaserver temporary lan_cidr
+  lan_cidr="${MISTBORN_PLEX_LAN_CIDR:-}"
+  if [[ -n "$lan_cidr" ]] && ! mistborn_valid_ipv4_cidr "$lan_cidr"; then
+    ui_error "MISTBORN_PLEX_LAN_CIDR must be an IPv4 CIDR such as 192.168.1.0/24"
+    return 1
+  fi
+
+  if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
+    ui_info "Would install the Plex UFW application profiles at $profile"
+  else
+    temporary="$(mktemp)"
+    printf '%s\n' \
+      '[plexmediaserver]' \
+      'title=Plex Media Server (Standard)' \
+      'description=The Plex Media Server' \
+      'ports=32400/tcp|3005/tcp|5353/udp|8324/tcp|32410:32414/udp' \
+      '' \
+      '[plexmediaserver-dlna]' \
+      'title=Plex Media Server (DLNA)' \
+      'description=The Plex Media Server (additional DLNA capability only)' \
+      'ports=1900/udp|32469/tcp' \
+      '' \
+      '[plexmediaserver-all]' \
+      'title=Plex Media Server (Standard + DLNA)' \
+      'description=The Plex Media Server (with additional DLNA capability)' \
+      'ports=32400/tcp|3005/tcp|5353/udp|8324/tcp|32410:32414/udp|1900/udp|32469/tcp' \
+      >"$temporary"
+    if install -m 0644 "$temporary" "$profile"; then
+      rm -f -- "$temporary"
+    else
+      rm -f -- "$temporary"
+      return 1
+    fi
+  fi
+
+  mistborn_run ufw app update plexmediaserver
+  mistborn_run ufw allow 32400/tcp comment 'Plex remote access'
+  if [[ -n "$lan_cidr" ]]; then
+    mistborn_run ufw allow from "$lan_cidr" to any app plexmediaserver-all
+  fi
+  if [[ "${MISTBORN_PLEX_TAILSCALE:-0}" == 1 ]]; then
+    mistborn_run ufw allow in on tailscale0 to any app plexmediaserver-all
+  fi
+}
+
 module_security_apply() {
   local ssh_port="${MISTBORN_SSH_PORT:-22}" ssh_config=/etc/ssh/sshd_config backup
   ui_step "$module_security_description"
   if [[ "${MISTBORN_HARDEN:-0}" != 1 ]]; then
     ui_warn "Security hardening is opt-in; re-run with MISTBORN_HARDEN=1 after testing SSH keys"
-    for task in packages ssh firewall fail2ban; do mistborn_task_skip "$task"; done
-    mistborn_task_skip tailscale-only
+    for task in packages ssh firewall plex-firewall fail2ban tailscale-only; do
+      mistborn_task_selected "$task" && mistborn_task_skip "$task"
+    done
     return 0
   fi
-  if [[ "${MISTBORN_DISABLE_PASSWORD_AUTH:-1}" == 1 && "${MISTBORN_DRY_RUN:-0}" != 1 ]]; then
+  if mistborn_task_selected ssh && [[ "${MISTBORN_DISABLE_PASSWORD_AUTH:-1}" == 1 && "${MISTBORN_DRY_RUN:-0}" != 1 ]]; then
     local user home
     user="$(mistborn_target_user)"; home="$(mistborn_user_home "$user")"
     if [[ ! -s "$home/.ssh/authorized_keys" && ! -s /root/.ssh/authorized_keys && "${MISTBORN_FORCE_SSH:-0}" != 1 ]]; then
@@ -297,9 +379,10 @@ module_security_apply() {
       return 1
     fi
   fi
-  mistborn_task_start packages
-  mistborn_apt_install ufw fail2ban
-  mistborn_task_complete packages
+  if mistborn_task_selected packages; then
+    mistborn_task_start packages; mistborn_apt_install ufw fail2ban; mistborn_task_complete packages
+  fi
+  if mistborn_task_selected ssh; then
   mistborn_task_start ssh
   if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
     ui_info "Would harden $ssh_config and validate it before restart"
@@ -320,16 +403,27 @@ module_security_apply() {
       "${MISTBORN_FAIL2BAN_MAXRETRY:-3}" "${MISTBORN_FAIL2BAN_BANTIME:-3600}" >/etc/fail2ban/jail.local
   fi
   mistborn_task_complete ssh
+  fi
+  if mistborn_task_selected firewall; then
   mistborn_task_start firewall
   mistborn_run ufw allow "$ssh_port/tcp"
   for port in ${MISTBORN_ALLOWED_TCP_PORTS:-}; do mistborn_run ufw allow "$port/tcp"; done
   mistborn_run ufw default deny incoming
   mistborn_run ufw --force enable
   mistborn_task_complete firewall
-  mistborn_task_start fail2ban
-  mistborn_run systemctl enable --now fail2ban
-  mistborn_task_complete fail2ban
-  if [[ "${MISTBORN_TAILSCALE_ONLY:-0}" == 1 ]]; then
+  fi
+  if mistborn_task_selected plex-firewall && [[ "${MISTBORN_PLEX_UFW:-0}" == 1 ]]; then
+    command -v ufw >/dev/null 2>&1 || mistborn_apt_install ufw
+    mistborn_task_start plex-firewall
+    mistborn_configure_plex_ufw
+    mistborn_task_complete plex-firewall
+  elif mistborn_task_selected plex-firewall; then
+    mistborn_task_skip plex-firewall
+  fi
+  if mistborn_task_selected fail2ban; then
+    mistborn_task_start fail2ban; mistborn_run systemctl enable --now fail2ban; mistborn_task_complete fail2ban
+  fi
+  if mistborn_task_selected tailscale-only && [[ "${MISTBORN_TAILSCALE_ONLY:-0}" == 1 ]]; then
     mistborn_task_start tailscale-only
     mistborn_run tailscale set --ssh=true
     mistborn_run ufw allow in on tailscale0
@@ -337,7 +431,7 @@ module_security_apply() {
     mistborn_run ufw delete allow "$ssh_port/tcp" || true
     mistborn_task_complete tailscale-only
     ui_warn "Confirm a new Tailscale SSH session before disconnecting"
-  else
+  elif mistborn_task_selected tailscale-only; then
     mistborn_task_skip tailscale-only
   fi
   ui_success "$module_security_description"
@@ -352,6 +446,7 @@ module_toolset_apply() {
     ui_info "Would install /usr/local/bin/mistborn and its Ratatui runner"
   else
     install -d -m 0755 /usr/local/lib/mistborn
+    if mistborn_task_selected runner; then
     mistborn_task_start runner
     if [[ -n "${MISTBORN_RUNNER_BINARY:-}" && -x "$MISTBORN_RUNNER_BINARY" && "$MISTBORN_RUNNER_BINARY" != /usr/local/bin/mistborn-bootstrap ]]; then
       install -m 0755 "$MISTBORN_RUNNER_BINARY" /usr/local/bin/mistborn-bootstrap
@@ -359,6 +454,8 @@ module_toolset_apply() {
     else
       mistborn_task_skip runner
     fi
+    fi
+    if mistborn_task_selected command; then
     mistborn_task_start command
     install -d -m 0755 /usr/local/lib/mistborn/plans
     local staging_dir
@@ -380,6 +477,7 @@ exec bash /usr/local/lib/mistborn/host.sh "$@"
 MISTBORN_LAUNCHER
     chmod 0755 /usr/local/bin/mistborn
     mistborn_task_complete command
+    fi
   fi
   ui_success "$module_toolset_description"
 }
@@ -390,7 +488,8 @@ main() {
       --yes) MISTBORN_YES=1 ;;
       --user) shift; MISTBORN_USER="${1:?--user requires a value}" ;;
       --only) shift; MISTBORN_ONLY="${1:?--only requires a module name}" ;;
-      -h|--help) printf 'Usage: %s [--dry-run] [--yes] [--user NAME] [--only MODULE]\n' "$0"; return ;;
+      --tasks) shift; MISTBORN_TASKS="${1:?--tasks requires a comma-separated task list}" ;;
+      -h|--help) printf 'Usage: %s [--dry-run] [--yes] [--user NAME] [--only MODULE] [--tasks IDS]\n' "$0"; return ;;
       *) ui_error "Unknown argument: $1"; return 2 ;;
     esac
     shift

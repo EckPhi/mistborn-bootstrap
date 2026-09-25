@@ -81,6 +81,7 @@ impl Dashboard {
         forwarded: &[String],
         stage_index: usize,
         progress_file: &Path,
+        tasks: &[String],
     ) -> Result<(bool, Option<i32>), String> {
         let stage = self
             .stages
@@ -93,6 +94,10 @@ impl Dashboard {
         }
         command.arg("--only");
         command.arg(&stage.id);
+        if !tasks.is_empty() {
+            command.arg("--tasks");
+            command.arg(tasks.join(","));
+        }
         command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
         command.env(
             "MISTBORN_RUNNER_BINARY",

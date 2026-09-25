@@ -4,6 +4,7 @@ module_docker_description="Docker Engine"
 
 module_docker_apply() {
   ui_step "$module_docker_description"
+  if mistborn_task_selected engine; then
   mistborn_task_start engine
   if command -v docker >/dev/null 2>&1; then
     ui_info "Docker already installed"
@@ -11,8 +12,9 @@ module_docker_apply() {
     mistborn_apt_install docker.io
   fi
   mistborn_task_complete engine
-  mistborn_task_start service
-  mistborn_run systemctl enable --now docker
-  mistborn_task_complete service
+  fi
+  if mistborn_task_selected service; then
+    mistborn_task_start service; mistborn_run systemctl enable --now docker; mistborn_task_complete service
+  fi
   ui_success "$module_docker_description"
 }

@@ -24,6 +24,11 @@ mistborn_task_start() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" 
 mistborn_task_complete() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" completed; }
 mistborn_task_skip() { mistborn_task_event "${MISTBORN_PROGRESS_STAGE:-}" "$1" skipped; }
 
+mistborn_task_selected() {
+  local task="$1"
+  [[ -z "${MISTBORN_TASKS:-}" || ",${MISTBORN_TASKS}," == *",${task},"* ]]
+}
+
 ui_confirm() {
   local prompt="$1" reply
   [[ "${MISTBORN_YES:-0}" == 1 ]] && return 0

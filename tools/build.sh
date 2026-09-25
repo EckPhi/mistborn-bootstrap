@@ -12,7 +12,7 @@ build_collection() {
     # shellcheck disable=SC2016
     printf '%s\n' '#!/usr/bin/env bash' 'set -Eeuo pipefail' \
       'trap '\''ui_error "Setup failed on line $LINENO"'\'' ERR' \
-      'MISTBORN_DRY_RUN=0' 'MISTBORN_YES=0' 'MISTBORN_ONLY=""'
+      'MISTBORN_DRY_RUN=0' 'MISTBORN_YES=0' 'MISTBORN_ONLY=""' 'MISTBORN_TASKS=""'
     printf 'MISTBORN_MODULES=('
     while IFS= read -r module; do
       [[ -z "$module" || "$module" == \#* ]] && continue
@@ -35,7 +35,8 @@ main() {
       --yes) MISTBORN_YES=1 ;;
       --user) shift; MISTBORN_USER="\${1:?--user requires a value}" ;;
       --only) shift; MISTBORN_ONLY="\${1:?--only requires a module name}" ;;
-      -h|--help) printf 'Usage: %s [--dry-run] [--yes] [--user NAME] [--only MODULE]\n' "\$0"; return ;;
+      --tasks) shift; MISTBORN_TASKS="\${1:?--tasks requires a comma-separated task list}" ;;
+      -h|--help) printf 'Usage: %s [--dry-run] [--yes] [--user NAME] [--only MODULE] [--tasks IDS]\n' "\$0"; return ;;
       *) ui_error "Unknown argument: \$1"; return 2 ;;
     esac
     shift

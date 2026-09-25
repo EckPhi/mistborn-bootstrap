@@ -1,4 +1,4 @@
-version = 1
+version = 2
 collection = "shell"
 
 [[stages]]
@@ -40,3 +40,4 @@ id = "configuration"
 title = "Configure the target user's shell"
 action = "configure zsh and .zshrc"
 weight = 1
+inputs = ["MISTBORN_REPLACE_ZSHRC"]

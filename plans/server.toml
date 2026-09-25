@@ -1,4 +1,4 @@
-version = 1
+version = 2
 collection = "server"
 
 [[stages]]
@@ -55,6 +55,7 @@ id = "configuration"
 title = "Configure the target user's shell"
 action = "configure zsh and .zshrc"
 weight = 1
+inputs = ["MISTBORN_REPLACE_ZSHRC"]
 
 [[stages]]
 id = "tailscale"
@@ -70,16 +71,21 @@ id = "forwarding"
 title = "Configure exit-node forwarding"
 action = "configure IPv4 and IPv6 forwarding"
 weight = 1
+inputs = ["MISTBORN_TAILSCALE_EXIT_NODE"]
+requires_confirmation = true
 [[stages.tasks]]
 id = "connect"
 title = "Connect to the tailnet"
 action = "tailscale up"
 weight = 2
+inputs = ["MISTBORN_TAILSCALE_SSH", "MISTBORN_TAILSCALE_EXIT_NODE"]
+requires_confirmation = true
 [[stages.tasks]]
 id = "auto-update"
 title = "Configure automatic updates"
 action = "tailscale set --auto-update"
 weight = 1
+inputs = ["MISTBORN_TAILSCALE_AUTO_UPDATE"]
 
 [[stages]]
 id = "runtipi"
@@ -105,6 +111,7 @@ id = "configuration"
 title = "Configure rclone"
 action = "rclone config"
 weight = 1
+inputs = ["MISTBORN_RCLONE_CONFIGURE"]
 
 [[stages]]
 id = "security"
@@ -120,11 +127,23 @@ id = "ssh"
 title = "Configure and validate SSH"
 action = "configure sshd and sshd -t"
 weight = 2
+inputs = ["MISTBORN_HARDEN", "MISTBORN_SSH_PORT", "MISTBORN_DISABLE_PASSWORD_AUTH", "MISTBORN_FORCE_SSH"]
+requires_confirmation = true
 [[stages.tasks]]
 id = "firewall"
 title = "Configure UFW rules"
 action = "configure ufw policy and allowed ports"
 weight = 2
+inputs = ["MISTBORN_HARDEN", "MISTBORN_SSH_PORT", "MISTBORN_ALLOWED_TCP_PORTS"]
+requires_confirmation = true
+[[stages.tasks]]
+id = "plex-firewall"
+title = "Configure Plex firewall rules"
+action = "install Plex UFW profiles and scoped allow rules"
+weight = 1
+revision = 2
+inputs = ["MISTBORN_HARDEN", "MISTBORN_PLEX_UFW", "MISTBORN_PLEX_LAN_CIDR", "MISTBORN_PLEX_TAILSCALE"]
+requires_confirmation = true
 [[stages.tasks]]
 id = "fail2ban"
 title = "Enable fail2ban"
@@ -135,6 +154,8 @@ id = "tailscale-only"
 title = "Apply Tailscale-only SSH rules"
 action = "configure Tailscale SSH and UFW interface rules"
 weight = 1
+inputs = ["MISTBORN_HARDEN", "MISTBORN_TAILSCALE_ONLY", "MISTBORN_TAILSCALE_PORT", "MISTBORN_SSH_PORT"]
+requires_confirmation = true
 
 [[stages]]
 id = "toolset"

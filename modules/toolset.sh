@@ -8,6 +8,7 @@ module_toolset_apply() {
     ui_info "Would install /usr/local/bin/mistborn and its Ratatui runner"
   else
     install -d -m 0755 /usr/local/lib/mistborn
+    if mistborn_task_selected runner; then
     mistborn_task_start runner
     if [[ -n "${MISTBORN_RUNNER_BINARY:-}" && -x "$MISTBORN_RUNNER_BINARY" && "$MISTBORN_RUNNER_BINARY" != /usr/local/bin/mistborn-bootstrap ]]; then
       install -m 0755 "$MISTBORN_RUNNER_BINARY" /usr/local/bin/mistborn-bootstrap
@@ -15,6 +16,8 @@ module_toolset_apply() {
     else
       mistborn_task_skip runner
     fi
+    fi
+    if mistborn_task_selected command; then
     mistborn_task_start command
     install -d -m 0755 /usr/local/lib/mistborn/plans
     local staging_dir
@@ -36,6 +39,7 @@ exec bash /usr/local/lib/mistborn/host.sh "$@"
 MISTBORN_LAUNCHER
     chmod 0755 /usr/local/bin/mistborn
     mistborn_task_complete command
+    fi
   fi
   ui_success "$module_toolset_description"
 }

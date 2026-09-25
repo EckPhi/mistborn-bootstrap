@@ -64,10 +64,13 @@
           <div class="fields">
             <label>SSH port<input id="ssh-port" type="number" min="1" max="65535" value="22" inputmode="numeric"></label>
             <label>Additional TCP ports<input id="tcp-ports" placeholder="80, 443" inputmode="numeric"></label>
+            <label>Plex LAN CIDR<input id="plex-lan-cidr" placeholder="192.168.1.0/24" inputmode="numeric"><small>Optional: permits Plex discovery and DLNA only from this IPv4 network.</small></label>
           </div>
           <div class="checks dependent">
             <label class="checkbox"><input id="disable-password" type="checkbox" checked>Disable SSH password authentication</label>
             <label class="checkbox"><input id="tailscale-only" type="checkbox">Restrict SSH access to Tailscale</label>
+            <label class="checkbox"><input id="plex-ufw" type="checkbox">Configure Plex UFW rules (public TCP 32400; LAN services scoped above)</label>
+            <label class="checkbox"><input id="plex-tailscale" type="checkbox">Allow Plex discovery, Companion, and DLNA ports through Tailscale</label>
           </div>
         </div>
       </fieldset>

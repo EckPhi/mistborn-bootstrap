@@ -4,6 +4,7 @@ module_runtipi_description="Runtipi"
 
 module_runtipi_apply() {
   ui_step "$module_runtipi_description"
+  mistborn_task_selected install || return 0
   mistborn_task_start install
   if command -v runtipi-cli >/dev/null 2>&1 || [[ -x /opt/runtipi/runtipi-cli ]]; then
     ui_info "Runtipi already installed"

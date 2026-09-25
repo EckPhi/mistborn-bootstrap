@@ -15,6 +15,9 @@ const selectionFields = {
   tcpPorts: ["tcp-ports", "text"],
   disablePassword: ["disable-password", "checkbox"],
   tailscaleOnly: ["tailscale-only", "checkbox"],
+  plexUfw: ["plex-ufw", "checkbox"],
+  plexTailscale: ["plex-tailscale", "checkbox"],
+  plexLanCidr: ["plex-lan-cidr", "text"],
 };
 
 export function selectionFromURL(search, allowedReleases) {
@@ -40,6 +43,9 @@ export function selectionFromURL(search, allowedReleases) {
     tcpPortsText,
     disablePassword: value("disablePassword", "1") === "1",
     tailscaleOnly: value("tailscaleOnly", "0") === "1",
+    plexUfw: value("plexUfw", "0") === "1",
+    plexTailscale: value("plexTailscale", "0") === "1",
+    plexLanCidr: value("plexLanCidr", ""),
   };
 }
 
@@ -62,7 +68,15 @@ export function validate(config) {
   if (config.user && !/^[a-z_][a-z0-9_-]*\$?$/i.test(config.user)) errors.push("Enter a valid Linux username.");
   if (config.harden && (!Number.isInteger(config.sshPort) || config.sshPort < 1 || config.sshPort > 65535)) errors.push("SSH port must be between 1 and 65535.");
   if (config.harden && config.tcpPorts.some(port => !Number.isInteger(port) || port < 1 || port > 65535)) errors.push("Additional TCP ports must be numbers between 1 and 65535.");
+  if (config.harden && config.plexUfw && config.plexLanCidr && !validIPv4Cidr(config.plexLanCidr)) errors.push("Plex LAN CIDR must be an IPv4 network such as 192.168.1.0/24.");
   return errors;
+}
+
+function validIPv4Cidr(value) {
+  const [address, prefix, extra] = value.split("/");
+  if (extra !== undefined || !/^\d+$/.test(prefix ?? "") || Number(prefix) > 32) return false;
+  const octets = address.split(".");
+  return octets.length === 4 && octets.every(octet => /^\d+$/.test(octet) && Number(octet) <= 255);
 }
 
 export function buildCommand(config, releaseInstallerAvailable = false) {
@@ -86,6 +100,11 @@ export function buildCommand(config, releaseInstallerAvailable = false) {
       if (!config.disablePassword) environment.push("MISTBORN_DISABLE_PASSWORD_AUTH=0");
       if (config.tailscaleOnly) environment.push("MISTBORN_TAILSCALE_ONLY=1");
       if (config.tcpPorts.length) environment.push(`MISTBORN_ALLOWED_TCP_PORTS=${shellQuote(config.tcpPorts.join(" "))}`);
+      if (config.plexUfw) {
+        environment.push("MISTBORN_PLEX_UFW=1");
+        if (config.plexTailscale) environment.push("MISTBORN_PLEX_TAILSCALE=1");
+        if (config.plexLanCidr) environment.push(`MISTBORN_PLEX_LAN_CIDR=${shellQuote(config.plexLanCidr)}`);
+      }
     }
   }
   if (config.yes) arguments_.push("--yes");
@@ -108,6 +127,11 @@ export function summarize(config) {
     items.push(config.disablePassword ? "Disable SSH password authentication" : "Keep SSH password authentication enabled");
     if (config.tcpPorts.length) items.push(`Allow additional TCP ports: ${config.tcpPorts.join(", ")}`);
     if (config.tailscaleOnly) items.push("Restrict SSH access to Tailscale");
+    if (config.plexUfw) {
+      items.push("Allow Plex remote access on TCP 32400");
+      if (config.plexTailscale) items.push("Allow Plex local services through tailscale0");
+      if (config.plexLanCidr) items.push(`Allow Plex discovery and DLNA from ${config.plexLanCidr}`);
+    }
   }
   return items;
 }
@@ -131,6 +155,9 @@ function readConfig() {
     tcpPortsText,
     disablePassword: document.querySelector("#disable-password").checked,
     tailscaleOnly: document.querySelector("#tailscale-only").checked,
+    plexUfw: document.querySelector("#plex-ufw").checked,
+    plexTailscale: document.querySelector("#plex-tailscale").checked,
+    plexLanCidr: document.querySelector("#plex-lan-cidr").value.trim(),
   };
 }
 

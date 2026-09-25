@@ -9,10 +9,13 @@ module_zsh_apply() {
   [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
 
   ui_step "$module_zsh_description for $user"
+  if mistborn_task_selected packages; then
   mistborn_task_start packages
   mistborn_apt_install zsh git
   mistborn_task_complete packages
+  fi
   custom_dir="$home/.oh-my-zsh"
+  if mistborn_task_selected oh-my-zsh; then
   mistborn_task_start oh-my-zsh
   if [[ ! -d "$custom_dir/.git" ]]; then
     mistborn_run sudo -u "$user" git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$custom_dir"
@@ -20,6 +23,8 @@ module_zsh_apply() {
     ui_info "Oh My Zsh already installed"
   fi
   mistborn_task_complete oh-my-zsh
+  fi
+  if mistborn_task_selected powerlevel10k; then
   mistborn_task_start powerlevel10k
   if [[ ! -d "$custom_dir/custom/themes/powerlevel10k/.git" ]]; then
     mistborn_run sudo -u "$user" git clone --depth 1 https://github.com/romkatv/powerlevel10k.git \
@@ -28,7 +33,9 @@ module_zsh_apply() {
     ui_info "Powerlevel10k already installed"
   fi
   mistborn_task_complete powerlevel10k
+  fi
 
+  if mistborn_task_selected configuration; then
   mistborn_task_start configuration
   zshrc="$home/.zshrc"
   if [[ -f "$zshrc" && ! -f "$zshrc.mistborn-backup" ]]; then
@@ -49,5 +56,6 @@ module_zsh_apply() {
   fi
   mistborn_task_complete configuration
   mistborn_run chsh -s "$(command -v zsh)" "$user"
+  fi
   ui_success "$module_zsh_description"
 }
