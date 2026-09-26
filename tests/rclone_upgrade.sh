@@ -11,122 +11,108 @@ source "$root/lib/system.sh"
 # shellcheck disable=SC1091
 source "$root/modules/rclone.sh"
 
-upstream_dir="$fixture/usr/local/bin"
-upstream_binary="$upstream_dir/rclone"
-mkdir -p "$upstream_dir"
-
-current_version="1.60.1"
-upstream_version="1.75.1"
-selected_binary="/usr/bin/rclone"
-capability_ok=1
+events="$fixture/events"
+selected_binary=/usr/bin/rclone
+installed_version=1.75.1
+apt_installed=1
+preview='Remv rclone [1.60.1]'
+installer_status=0
 confirmation=0
-confirm_calls=0
-run_calls=0
-apt_calls=0
-update_selects_binary=1
-diagnostics=""
+capability_ok=1
+remove_status=0
+export installer_status events
 
-ui_error() { diagnostics+="error:$*\n"; }
-ui_warn() { diagnostics+="warn:$*\n"; }
-ui_info() { diagnostics+="info:$*\n"; }
+ui_error() { printf 'error:%s\n' "$*" >>"$fixture/diagnostics"; }
+ui_warn() { printf 'warn:%s\n' "$*" >>"$fixture/diagnostics"; }
+ui_info() { printf 'info:%s\n' "$*" >>"$fixture/diagnostics"; }
 ui_step() { :; }
 ui_success() { :; }
-ui_confirm() { confirm_calls=$((confirm_calls + 1)); return "$confirmation"; }
-mistborn_rclone_read_version() {
-  if [[ "$1" == "$upstream_binary" ]]; then printf '%s\n' "$upstream_version"; else printf '%s\n' "$current_version"; fi
+mistborn_apt_install() { printf 'apt-install %s\n' "$*" >>"$events"; }
+mistborn_rclone_apt_installed() { [[ "$apt_installed" == 1 ]]; }
+mistborn_rclone_confirm_apt_removal() {
+  printf 'confirm-removal\n' >>"$events"
+  return "$confirmation"
 }
-mistborn_rclone_verify_service_capability() {
-  [[ "$capability_ok" == 1 ]] || { ui_error "fixture: missing RC capability"; return 1; }
+mistborn_rclone_download_installer() {
+  # Variables are expanded by the generated fixture script.
+  # shellcheck disable=SC2016
+  printf '#!/usr/bin/env bash\nprintf "official-installer\\n" >>"$events"\nexit "$installer_status"\n' >"$1"
 }
 mistborn_rclone_find_binary() { printf '%s\n' "$selected_binary"; }
-mistborn_run() {
-  run_calls=$((run_calls + 1))
-  [[ "$1" == /usr/bin/rclone && "$2" == selfupdate && "$3" == --stable && "$4" == --output && "$5" == "$upstream_binary" ]]
-  [[ "$update_selects_binary" == 0 ]] || selected_binary="$upstream_binary"
+mistborn_rclone_read_version() { printf '%s\n' "$installed_version"; }
+mistborn_rclone_verify_service_capability() { [[ "$capability_ok" == 1 ]]; }
+apt-get() {
+  case "$*" in
+    '-s remove rclone') printf '%s\n' "$preview" ;;
+    'remove -y rclone') printf 'apt-remove\n' >>"$events"; return "$remove_status" ;;
+    'install -y --no-install-recommends rclone') printf 'apt-restore\n' >>"$events" ;;
+    *) printf 'unexpected apt-get call: %s\n' "$*" >&2; return 1 ;;
+  esac
 }
 
-if mistborn_rclone_version_at_least 1.69.0 1.69.0 &&
-  ! mistborn_rclone_version_at_least 1.68.9 1.69.0 &&
-  ! mistborn_rclone_version_at_least 1.69.0-beta.1 1.69.0 &&
-  mistborn_rclone_version_at_least 1.69.0+build.2 1.69.0; then
-  :
-else
-  printf 'rclone version gate comparison failed\n' >&2
+mistborn_rclone_version_at_least 1.69.0 1.69.0
+if mistborn_rclone_version_at_least 1.68.9 1.69.0; then exit 1; fi
+if mistborn_rclone_version_at_least 1.69.0-beta.1 1.69.0; then exit 1; fi
+mistborn_rclone_version_at_least 1.69.0+build.2 1.69.0
+
+# Only the apt-owned package may be removed, after explicit approval.
+mistborn_rclone_install_official
+[[ "$(<"$events")" == $'apt-install unzip\nconfirm-removal\napt-remove\nofficial-installer' ]]
+
+# Extra removals are refused before confirmation or mutation.
+: >"$events"
+preview=$'Remv rclone [1.60.1]\nRemv another-package [1.0]'
+if mistborn_rclone_install_official; then exit 1; fi
+[[ "$(<"$events")" == 'apt-install unzip' ]]
+[[ "$(<"$fixture/diagnostics")" == *'would also remove another-package'* ]]
+
+# A declined migration must not remove the apt package.
+: >"$events"
+preview='Remv rclone [1.60.1]'
+confirmation=1
+if mistborn_rclone_install_official; then exit 1; fi
+[[ "$(<"$events")" == $'apt-install unzip\nconfirm-removal' ]]
+
+# A partial apt removal failure also attempts package restoration.
+: >"$events"
+confirmation=0 remove_status=1
+if mistborn_rclone_install_official; then exit 1; fi
+[[ "$(<"$events")" == $'apt-install unzip\nconfirm-removal\napt-remove\napt-restore' ]]
+remove_status=0
+
+# Failed upstream installation restores the apt package.
+: >"$events"
+confirmation=0 installer_status=1
+export installer_status
+if mistborn_rclone_install_official; then exit 1; fi
+[[ "$(<"$events")" == $'apt-install unzip\nconfirm-removal\napt-remove\nofficial-installer\napt-restore' ]]
+
+# Upstream's "already current" exit code is accepted only after verification.
+: >"$events"
+installer_status=3
+export installer_status
+mistborn_rclone_install_official
+[[ "$(<"$events")" == *'official-installer' ]]
+[[ "$(<"$events")" != *'apt-restore' ]]
+
+# A missing RC capability also triggers rollback after install.
+: >"$events"
+installer_status=0 capability_ok=0 MISTBORN_RCLONE_SERVICE=1
+export installer_status MISTBORN_RCLONE_SERVICE
+if mistborn_rclone_install_official; then exit 1; fi
+[[ "$(<"$events")" == *'apt-restore' ]]
+capability_ok=1
+
+# Fresh hosts do not receive an apt removal prompt.
+: >"$events"
+apt_installed=0
+mistborn_rclone_install_official
+[[ "$(<"$events")" == $'apt-install unzip\nofficial-installer' ]]
+
+# --yes cannot bypass a real destructive confirmation without an interactive tty.
+if ( source "$root/modules/rclone.sh"; MISTBORN_YES=1 mistborn_rclone_confirm_apt_removal ) </dev/null 2>/dev/null; then
+  printf 'noninteractive --yes bypassed apt removal approval\n' >&2
   exit 1
 fi
 
-# An apt-provided release with selfupdate support asks first, updates to the
-# stable path outside dpkg ownership, then verifies version and capabilities.
-mistborn_rclone_prepare_service_binary /usr/bin/rclone "$upstream_binary"
-[[ "$confirm_calls" == 1 && "$run_calls" == 1 && "$selected_binary" == "$upstream_binary" ]]
-[[ "$diagnostics" == *"apt-managed /usr/bin/rclone untouched"* ]]
-
-# A pre-selfupdate apt binary is refused before confirmation or any mutation;
-# running the official install script here would overwrite /usr/bin/rclone.
-current_version="1.53.3"
-selected_binary=/usr/bin/rclone
-confirm_calls=0 run_calls=0 diagnostics=""
-if mistborn_rclone_prepare_service_binary /usr/bin/rclone "$upstream_binary"; then
-  printf 'expected safe refusal for rclone without selfupdate support\n' >&2
-  exit 1
-fi
-[[ "$confirm_calls" == 0 && "$run_calls" == 0 ]]
-[[ "$diagnostics" == *"Refusing the official installer because it overwrites apt-managed /usr/bin/rclone"* ]]
-
-# Declining the explicit upgrade must not run it.
-current_version="1.60.1"
-selected_binary=/usr/bin/rclone
-confirm_calls=0 run_calls=0 diagnostics="" confirmation=1
-if mistborn_rclone_prepare_service_binary /usr/bin/rclone "$upstream_binary"; then
-  printf 'expected refusal after declining upstream update\n' >&2
-  exit 1
-fi
-[[ "$confirm_calls" == 1 && "$run_calls" == 0 ]]
-
-# Capability and PATH checks happen after the verified update.
-confirmation=0 capability_ok=0 selected_binary=/usr/bin/rclone run_calls=0 diagnostics=""
-if mistborn_rclone_prepare_service_binary /usr/bin/rclone "$upstream_binary"; then
-  printf 'expected post-update capability verification failure\n' >&2
-  exit 1
-fi
-[[ "$selected_binary" == "$upstream_binary" && "$run_calls" == 1 ]]
-
-capability_ok=1 selected_binary=/usr/bin/rclone run_calls=0 diagnostics="" update_selects_binary=0
-if mistborn_rclone_prepare_service_binary /usr/bin/rclone "$upstream_binary"; then
-  printf 'expected PATH mismatch failure\n' >&2
-  exit 1
-fi
-[[ "$diagnostics" == *"PATH selects /usr/bin/rclone instead of the verified service binary"* ]]
-update_selects_binary=1
-
-# A capable apt binary remains unchanged: no prompt, selfupdate, or path change.
-current_version="1.69.0"
-selected_binary=/usr/bin/rclone
-confirm_calls=0 run_calls=0 diagnostics=""
-mistborn_rclone_prepare_service_binary /usr/bin/rclone "$upstream_binary"
-[[ "$confirm_calls" == 0 && "$run_calls" == 0 && "$selected_binary" == /usr/bin/rclone ]]
-
-# Normal rclone install path never probes or upgrades the upstream binary.
-mistborn_target_user() { printf 'root\n'; }
-mistborn_user_home() { printf '/root\n'; }
-mistborn_task_selected() { [[ "$1" == package ]]; }
-mistborn_task_start() { :; }
-mistborn_task_complete() { :; }
-mistborn_task_skip() { :; }
-mistborn_apt_install() { apt_calls=$((apt_calls + 1)); }
-MISTBORN_TASKS=package MISTBORN_RCLONE_SERVICE=0 MISTBORN_DRY_RUN=0
-export MISTBORN_TASKS MISTBORN_RCLONE_SERVICE MISTBORN_DRY_RUN
-module_rclone_apply
-[[ "$apt_calls" == 1 && "$run_calls" == 0 ]]
-
-# Opt-in dry-run announces the guarded upgrade without probing or mutating host.
-apt_calls=0 diagnostics=""
-MISTBORN_RCLONE_SERVICE=1 MISTBORN_DRY_RUN=1
-module_rclone_apply
-if [[ "$apt_calls" != 1 || "$diagnostics" != *"Would verify rclone 1.69.0+"* ]]; then
-  printf 'opt-in dry-run did not install the package or announce the version check\n' >&2
-  exit 1
-fi
-[[ "$run_calls" == 0 ]]
-
-printf 'rclone opt-in upgrade tests passed\n'
+printf 'rclone official installer migration tests passed\n'

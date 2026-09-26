@@ -255,7 +255,7 @@ impl Dashboard {
                 .map_err(|error| error.to_string())?;
 
             if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
-                while let Ok(bytes) = receiver.try_recv() {
+                while let Ok(bytes) = receiver.recv_timeout(Duration::from_millis(100)) {
                     self.parser.process(&bytes);
                 }
                 ingest_events(
@@ -489,7 +489,9 @@ fn draw(
         Gauge::default()
             .block(
                 Block::default()
-                    .title(if finished && home_available {
+                    .title(if finished && stage_status.contains(&StepStatus::Failed) {
+                        " Failed · ↑/↓ scroll · q/Esc exit "
+                    } else if finished && home_available {
                         " Complete · H/Home menu · ↑/↓ scroll · q/Esc exit "
                     } else if finished {
                         " Complete · ↑/↓ scroll · q/Esc exit "

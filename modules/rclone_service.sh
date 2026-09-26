@@ -268,7 +268,7 @@ module_rclone_service_apply() {
   ui_confirm "Continue with the rclone Unix-socket service setup?" || { ui_error "Rclone service setup requires explicit confirmation."; return 1; }
   local rclone_binary
   rclone_binary="$(command -v rclone)"
-  mistborn_rclone_prepare_service_binary "$rclone_binary" /usr/local/bin/rclone || return 1
+  mistborn_rclone_verify_installed "$rclone_binary" 1 || return 1
   mistborn_rclone_service_credentials
   mistborn_task_start service
   trap 'mistborn_rclone_transaction_cleanup' EXIT

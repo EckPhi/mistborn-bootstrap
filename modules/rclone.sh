@@ -45,43 +45,98 @@ mistborn_rclone_find_binary() {
   command -v rclone
 }
 
-mistborn_rclone_prepare_service_binary() {
-  local binary="$1" upstream_binary="$2" version
+mistborn_rclone_verify_installed() {
+  local binary="$1" require_service="${2:-0}" version selected_path
   version="$(mistborn_rclone_read_version "$binary")" || return 1
-  if ! mistborn_rclone_version_at_least "$version" "$mistborn_rclone_min_service_version"; then
-    if ! mistborn_rclone_version_at_least "$version" "1.55.0"; then
-      ui_error "rclone $version is too old for the verified self-update command (requires 1.55.0+). Refusing the official installer because it overwrites apt-managed /usr/bin/rclone; update through a trusted package that installs to /usr/local/bin/rclone, then retry."
-      return 1
-    fi
-    [[ -d "${upstream_binary%/*}" && ! -L "${upstream_binary%/*}" ]] || {
-      ui_error "Cannot safely use the stable upstream binary directory ${upstream_binary%/*}."; return 1;
-    }
-    [[ ! -L "$upstream_binary" ]] || { ui_error "Refusing symlinked upstream rclone target $upstream_binary."; return 1; }
-    [[ ! -e "$upstream_binary" || -f "$upstream_binary" ]] || { ui_error "Refusing non-file upstream rclone target $upstream_binary."; return 1; }
-
-    ui_warn "Rclone $version is below $mistborn_rclone_min_service_version, required for the optional authenticated Unix-socket service."
-    ui_info "The official verified stable updater will install to $upstream_binary, leaving apt-managed /usr/bin/rclone untouched. Future apt upgrades will not replace this service binary."
-    ui_confirm "Install the upstream stable rclone binary at $upstream_binary?" || {
-      ui_error "Rclone service setup requires explicit approval to install the upstream binary."; return 1;
-    }
-    mistborn_run "$binary" selfupdate --stable --output "$upstream_binary" || {
-      ui_error "The verified upstream rclone self-update failed."; return 1;
-    }
-    hash -r
-    binary="$upstream_binary"
-    version="$(mistborn_rclone_read_version "$binary")" || return 1
+  if [[ "$require_service" == 1 ]]; then
     mistborn_rclone_version_at_least "$version" "$mistborn_rclone_min_service_version" || {
-      ui_error "Upstream rclone update left version $version installed; $mistborn_rclone_min_service_version or newer is required."; return 1;
+      ui_error "rclone $version is too old for the RC socket service; $mistborn_rclone_min_service_version or newer is required."; return 1;
     }
+    mistborn_rclone_verify_service_capability "$binary" || return 1
   fi
-
-  mistborn_rclone_verify_service_capability "$binary" || return 1
-  local selected_path
   selected_path="$(mistborn_rclone_find_binary)" || { ui_error "rclone is not on PATH after capability verification."; return 1; }
   [[ "$selected_path" == "$binary" ]] || {
-    ui_error "PATH selects $selected_path instead of the verified service binary $binary. Put /usr/local/bin before /usr/bin and retry."; return 1;
+    ui_error "PATH selects $selected_path instead of the verified rclone binary $binary."; return 1;
   }
 }
+
+mistborn_rclone_apt_installed() {
+  [[ "$(dpkg-query -W -f='${Status}' rclone 2>/dev/null || true)" == 'install ok installed' ]]
+}
+
+mistborn_rclone_removal_is_bounded() {
+  local preview="$1" action package found=0
+  while read -r action package _; do
+    [[ "$action" == Remv ]] || continue
+    [[ "$package" == rclone || "$package" == rclone:* ]] || {
+      ui_error "Refusing apt removal because it would also remove $package."; return 1;
+    }
+    found=1
+  done <<<"$preview"
+  [[ "$found" == 1 ]] || { ui_error "Apt did not preview removal of the installed rclone package."; return 1; }
+}
+
+mistborn_rclone_confirm_apt_removal() {
+  local reply
+  ui_warn "The official rclone installer replaces /usr/bin/rclone; apt ownership must be removed first. Existing rclone configuration is not purged."
+  [[ -t 0 ]] || { ui_error "A terminal is required to approve removal of the apt-managed rclone package."; return 1; }
+  read -r -p 'Type REMOVE RCLONE to remove only the apt package and install upstream rclone: ' reply
+  [[ "$reply" == 'REMOVE RCLONE' ]] || { ui_error "Apt-managed rclone removal was not approved."; return 1; }
+}
+
+mistborn_rclone_download_installer() {
+  curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --output "$1" https://rclone.org/install.sh
+}
+
+mistborn_rclone_restore_apt() {
+  [[ "$1" == 1 ]] || return 0
+  ui_warn "Upstream rclone installation failed after apt removal; attempting to restore the apt package."
+  apt-get install -y --no-install-recommends rclone || ui_error "Could not restore apt-managed rclone; repair the package manually before retrying."
+}
+
+mistborn_rclone_install_official() (
+  set -Eeuo pipefail
+  local work_dir installer removal_preview binary status had_apt=0
+  mistborn_apt_install unzip
+  command -v unzip >/dev/null 2>&1 || { ui_error "The official rclone installer requires unzip."; return 1; }
+  command -v curl >/dev/null 2>&1 || { ui_error "The official rclone installer requires curl."; return 1; }
+  work_dir="$(mktemp -d)" || return 1
+  trap 'rm -rf -- "$work_dir"' EXIT
+  installer="$work_dir/install.sh"
+  mistborn_rclone_download_installer "$installer" || { ui_error "Could not download the official rclone installer."; return 1; }
+  [[ -s "$installer" ]] || { ui_error "The downloaded rclone installer is empty."; return 1; }
+  if mistborn_rclone_apt_installed; then
+    had_apt=1
+    removal_preview="$(LC_ALL=C apt-get -s remove rclone)" || { ui_error "Cannot preview apt removal of rclone."; return 1; }
+    mistborn_rclone_removal_is_bounded "$removal_preview" || return 1
+    mistborn_rclone_confirm_apt_removal || return 1
+    apt-get remove -y rclone || {
+      ui_error "Could not remove apt-managed rclone."
+      mistborn_rclone_restore_apt "$had_apt"
+      return 1
+    }
+  fi
+  if bash "$installer"; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" != 0 && "$status" != 3 ]]; then
+    ui_error "The official rclone installer failed (exit $status)."
+    mistborn_rclone_restore_apt "$had_apt"
+    return 1
+  fi
+  hash -r
+  binary="$(mistborn_rclone_find_binary)" || {
+    ui_error "rclone is not on PATH after the official installer completed."
+    mistborn_rclone_restore_apt "$had_apt"
+    return 1
+  }
+  if ! mistborn_rclone_verify_installed "$binary" "${MISTBORN_RCLONE_SERVICE:-0}"; then
+    mistborn_rclone_restore_apt "$had_apt"
+    return 1
+  fi
+)
 
 module_rclone_apply() {
   local user home
@@ -91,15 +146,11 @@ module_rclone_apply() {
   ui_step "$module_rclone_description"
   if mistborn_task_selected package; then
     mistborn_task_start package
-    mistborn_apt_install rclone
-    if [[ "${MISTBORN_RCLONE_SERVICE:-0}" == 1 ]]; then
-      if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
-        ui_info "Would verify rclone $mistborn_rclone_min_service_version+ and, if needed, request approval before installing the verified stable binary at /usr/local/bin/rclone"
-      else
-        local rclone_binary
-        rclone_binary="$(mistborn_rclone_find_binary)" || { ui_error "rclone is not installed after apt completed."; return 1; }
-        mistborn_rclone_prepare_service_binary "$rclone_binary" /usr/local/bin/rclone || return 1
-      fi
+    if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
+      ui_info "Would install unzip, download the official rclone installer, and inspect apt ownership before any confirmed package removal"
+      ui_info "Would verify installed rclone and RC socket support when service mode is selected"
+    else
+      mistborn_rclone_install_official || return 1
     fi
     mistborn_task_complete package
   fi

@@ -699,6 +699,10 @@ fn execute(options: Options) -> Result<(), String> {
             if let Some(progress) = &progress {
                 progress.failed(&module, elapsed);
             }
+            if let Some(dashboard) = &mut dashboard {
+                dashboard.wait_for_exit(false)?;
+            }
+            drop(dashboard);
             return Err(format!(
                 "module {module} failed; rerun the same command to resume"
             ));

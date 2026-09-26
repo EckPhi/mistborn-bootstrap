@@ -94,9 +94,9 @@ help = "Installs rclone and opens its interactive configuration when requested."
 [[stages.tasks]]
 id = "package"
 title = "Install rclone"
-action = "install rclone; ensure RC Unix-socket support when service mode is selected"
+action = "migrate apt-owned rclone with confirmation; install upstream rclone and verify RC Unix-socket support when selected"
 weight = 1
-revision = 2
+revision = 3
 inputs = ["MISTBORN_RCLONE_SERVICE"]
 [[stages.tasks]]
 id = "configuration"

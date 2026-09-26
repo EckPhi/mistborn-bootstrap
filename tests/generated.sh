@@ -17,6 +17,7 @@ rclone_output="$(
 )"
 [[ "$rclone_output" == *"env HOME="*" rclone config"* ]]
 [[ "$rclone_output" != *"sudo -H -u root rclone config"* ]]
+[[ "$rclone_output" == *"Would install unzip, download the official rclone installer"* ]]
 
 rclone_service_output="$(MISTBORN_RCLONE_SERVICE=1 bash "$root/dist/server.sh" --dry-run --yes --user root --only rclone_service)"
 [[ "$rclone_service_output" == *"Would verify rclone rcd Unix-socket and authentication support"* ]]

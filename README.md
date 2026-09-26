@@ -121,9 +121,15 @@ Runtipi is installed, so the socket directory exists when the app is started.
 The existing `MISTBORN_RCLONE_CONFIGURE=1` workflow for the target user's own
 remotes remains separate. Service mode requires rclone 1.69.0 or newer so RC
 authentication is enforced over the Unix socket.
-If the distribution package is too old but supports `rclone selfupdate`,
-Mistborn asks before installing the verified upstream binary at
-`/usr/local/bin/rclone`. Older packages need a manual rclone upgrade first.
+Mistborn uses rclone's official installer rather than the distribution's older
+package. It installs `unzip` first. If an apt-managed rclone is already present,
+Mistborn previews its removal and requires you to type `REMOVE RCLONE` before
+removing that package without purging configuration. It refuses a preview that
+would remove other packages and tries to restore the apt package if upstream
+installation or verification fails. The official installer writes
+`/usr/bin/rclone`; future apt upgrades no longer own it. The installer uses
+HTTPS downloads but does not verify a signed checksum, unlike `rclone
+selfupdate`; review the upstream script before approving this trust tradeoff.
 
 The systemd service runs `rclone rcd` on `/run/rclone/rc.sock` with RC
 authentication. `RuntimeDirectory=rclone` creates the directory at service
