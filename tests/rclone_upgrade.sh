@@ -122,8 +122,11 @@ module_rclone_apply
 # Opt-in dry-run announces the guarded upgrade without probing or mutating host.
 apt_calls=0 diagnostics=""
 MISTBORN_RCLONE_SERVICE=1 MISTBORN_DRY_RUN=1
-output="$(module_rclone_apply)"
-[[ "$apt_calls" == 1 && "$output" == *"Would verify rclone 1.69.0+"* ]]
+module_rclone_apply
+if [[ "$apt_calls" != 1 || "$diagnostics" != *"Would verify rclone 1.69.0+"* ]]; then
+  printf 'opt-in dry-run did not install the package or announce the version check\n' >&2
+  exit 1
+fi
 [[ "$run_calls" == 0 ]]
 
 printf 'rclone opt-in upgrade tests passed\n'
