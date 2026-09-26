@@ -11,26 +11,6 @@ source "$root/lib/system.sh"
 # shellcheck disable=SC1091
 source "$root/modules/rclone.sh"
 
-# Current rclone keeps global flags out of `--help` and exposes them under
-# `help flags`; the service check must inspect the latter without starting RC.
-fake_binary="$fixture/rclone"
-# The fake binary expands this variable when the fixture runs, not here.
-# shellcheck disable=SC2016
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'case "$*" in' \
-  '  "rcd --help") printf "%s\n" "--rc-addr --rc-user --rc-pass" ;;' \
-  '  "--help") printf "%s\n" "Use rclone help flags for global options" ;;' \
-  '  "help flags") if [[ "${RCLONE_TEST_MISSING_CONFIG:-0}" == 1 ]]; then printf "%s\n" "no config flag"; else printf "%s\n" "--config string"; fi ;;' \
-  '  *) exit 1 ;;' \
-  'esac' >"$fake_binary"
-chmod 0755 "$fake_binary"
-mistborn_rclone_verify_service_capability "$fake_binary"
-if RCLONE_TEST_MISSING_CONFIG=1 mistborn_rclone_verify_service_capability "$fake_binary" 2>/dev/null; then
-  printf 'missing global config flag unexpectedly passed\n' >&2
-  exit 1
-fi
-
 events="$fixture/events"
 selected_binary=/usr/bin/rclone
 installed_version=1.75.1
@@ -69,6 +49,30 @@ apt-get() {
     *) printf 'unexpected apt-get call: %s\n' "$*" >&2; return 1 ;;
   esac
 }
+
+# Current rclone keeps global flags out of `--help` and exposes them under
+# `help flags`; inspect the real capability function without starting RC.
+fake_binary="$fixture/rclone"
+# The fake binary expands this variable when the fixture runs, not here.
+# shellcheck disable=SC2016
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'case "$*" in' \
+  '  "rcd --help") printf "%s\n" "--rc-addr --rc-user --rc-pass" ;;' \
+  '  "--help") printf "%s\n" "Use rclone help flags for global options" ;;' \
+  '  "help flags") if [[ "${RCLONE_TEST_MISSING_CONFIG:-0}" == 1 ]]; then printf "%s\n" "no config flag"; else printf "%s\n" "--config string"; fi ;;' \
+  '  *) exit 1 ;;' \
+  'esac' >"$fake_binary"
+chmod 0755 "$fake_binary"
+(
+  # shellcheck disable=SC1091
+  source "$root/modules/rclone.sh"
+  mistborn_rclone_verify_service_capability "$fake_binary"
+  if RCLONE_TEST_MISSING_CONFIG=1 mistborn_rclone_verify_service_capability "$fake_binary" 2>/dev/null; then
+    printf 'missing global config flag unexpectedly passed\n' >&2
+    exit 1
+  fi
+)
 
 mistborn_rclone_version_at_least 1.69.0 1.69.0
 if mistborn_rclone_version_at_least 1.68.9 1.69.0; then exit 1; fi
