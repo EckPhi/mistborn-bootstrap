@@ -2,7 +2,8 @@ common
 docker
 zsh
 tailscale
-runtipi
 rclone
+rclone_service
+runtipi
 security
 toolset

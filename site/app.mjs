@@ -10,6 +10,7 @@ const selectionFields = {
   exitNode: ["exit-node", "checkbox"],
   tailscaleAutoUpdate: ["tailscale-auto-update", "checkbox"],
   rclone: ["rclone", "checkbox"],
+  rcloneService: ["rclone-service", "checkbox"],
   harden: ["harden", "checkbox"],
   sshPort: ["ssh-port", "number"],
   fail2banMaxretry: ["fail2ban-maxretry", "number"],
@@ -39,6 +40,7 @@ export function selectionFromURL(search, allowedReleases) {
     exitNode: value("exitNode", "0") === "1",
     tailscaleAutoUpdate: value("tailscaleAutoUpdate", "0") === "1",
     rclone: value("rclone", "0") === "1",
+    rcloneService: value("rcloneService", "0") === "1",
     harden: value("harden", "0") === "1",
     sshPort: Number(value("sshPort", "22")),
     fail2banMaxretry: Number(value("fail2banMaxretry", "3")),
@@ -101,6 +103,7 @@ export function buildCommand(config, releaseInstallerAvailable = false) {
     if (config.exitNode) environment.push("MISTBORN_TAILSCALE_EXIT_NODE=1");
     if (config.tailscaleAutoUpdate) environment.push("MISTBORN_TAILSCALE_AUTO_UPDATE=1");
     if (config.rclone) environment.push("MISTBORN_RCLONE_CONFIGURE=1");
+    if (config.rcloneService) environment.push("MISTBORN_RCLONE_SERVICE=1");
     if (config.harden) {
       environment.push("MISTBORN_HARDEN=1", `MISTBORN_SSH_PORT=${config.sshPort}`);
       environment.push(`MISTBORN_FAIL2BAN_MAXRETRY=${config.fail2banMaxretry}`, `MISTBORN_FAIL2BAN_BANTIME=${config.fail2banBantime}`);
@@ -128,7 +131,8 @@ export function summarize(config) {
   if (config.tailscaleSsh && config.collection === "server") items.push("Enable Tailscale SSH");
   if (config.exitNode && config.collection === "server") items.push("Advertise a Tailscale exit node");
   if (config.tailscaleAutoUpdate && config.collection === "server") items.push("Automatically install Tailscale updates");
-  if (config.rclone && config.collection === "server") items.push("Open interactive rclone configuration");
+  if (config.rclone && !config.rcloneService && config.collection === "server") items.push("Open interactive rclone configuration");
+  if (config.rcloneService && config.collection === "server") items.push("Set up authenticated host rclone RC Unix socket for the Runtipi proxy (asks for credentials interactively; no host port)");
   if (config.harden && config.collection === "server") {
     items.push(`Harden SSH on port ${config.sshPort} and enable UFW/fail2ban`);
     items.push(`Fail2ban bans SSH after ${config.fail2banMaxretry} failed attempts for ${config.fail2banBantime} seconds`);
@@ -157,6 +161,7 @@ function readConfig() {
     exitNode: document.querySelector("#exit-node").checked,
     tailscaleAutoUpdate: document.querySelector("#tailscale-auto-update").checked,
     rclone: document.querySelector("#rclone").checked,
+    rcloneService: document.querySelector("#rclone-service").checked,
     harden: document.querySelector("#harden").checked,
     sshPort: Number(document.querySelector("#ssh-port").value),
     fail2banMaxretry: Number(document.querySelector("#fail2ban-maxretry").value),

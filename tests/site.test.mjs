@@ -4,7 +4,7 @@ import { buildCommand, selectionFromURL, selectionToSearch, shellQuote, summariz
 
 const defaults = {
   collection: "server", downloader: "curl", release: "v0.5.6", user: "", yes: false,
-  tailscaleSsh: false, exitNode: false, tailscaleAutoUpdate: false, rclone: false, harden: false, sshPort: 22,
+  tailscaleSsh: false, exitNode: false, tailscaleAutoUpdate: false, rclone: false, rcloneService: false, harden: false, sshPort: 22,
   fail2banMaxretry: 3, fail2banBantime: 3600,
   tcpPorts: [], disablePassword: true, tailscaleOnly: false,
   plexUfw: false, plexTailscale: false, plexLanCidr: "",
@@ -24,6 +24,17 @@ test("round-trips fail2ban installer inputs through the shareable URL", () => {
   const restored = selectionFromURL(`?${selectionToSearch(config)}`, ["v0.5.6"]);
   assert.equal(restored.fail2banMaxretry, 5);
   assert.equal(restored.fail2banBantime, 86400);
+});
+
+test("rclone service mode is opt-in and never puts credentials in the generated command", () => {
+  const config = { ...defaults, rcloneService: true };
+  const command = buildCommand(config);
+  assert.match(command, /MISTBORN_RCLONE_SERVICE=1/);
+  assert.doesNotMatch(command, /RCLONE_(?:USER|PASS)=/);
+  assert.ok(summarize(config).some(item => item.includes("no host port")));
+  assert.ok(!summarize({ ...config, rclone: true }).includes("Open interactive rclone configuration"));
+  const restored = selectionFromURL(`?${selectionToSearch(config)}`, ["v0.5.6"]);
+  assert.equal(restored.rcloneService, true);
 });
 
 test("adds supported server configuration with safe quoting", () => {

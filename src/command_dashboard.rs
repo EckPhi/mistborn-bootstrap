@@ -83,22 +83,15 @@ impl CommandDashboard {
 
     pub fn run(
         &mut self,
-        script: &Path,
+        executable: &Path,
         arguments: &[String],
-        progress_file: &Path,
     ) -> Result<(bool, Option<i32>), String> {
-        let mut command = CommandBuilder::new("bash");
-        command.arg(script);
+        let mut command = CommandBuilder::new(executable);
+        command.arg("host");
         for argument in arguments {
             command.arg(argument);
         }
         command.env("MISTBORN_EMBEDDED_TERMINAL", "1");
-        command.env("MISTBORN_PROGRESS_FILE", progress_file);
-        command.env("MISTBORN_PROGRESS_STAGE", "bootstrap");
-        command.env(
-            "MISTBORN_BOOTSTRAP_VERSION",
-            format!("v{}", env!("CARGO_PKG_VERSION")),
-        );
 
         let pair = native_pty_system()
             .openpty(PtySize {
@@ -308,57 +301,22 @@ const MENU_COMMANDS: &[MenuCommand] = &[
     MenuCommand {
         label: "Status",
         operation: Some("status"),
-        help: "Rust read-only overview of component versions and observed host state. Use --legacy for the previous Bash report during this compatibility release.",
+        help: "Read-only overview of component versions and observed host state.",
     },
     MenuCommand {
         label: "Doctor",
         operation: Some("doctor"),
-        help: "Rust read-only host audit with stable remediation IDs. Use --format json for automation or --legacy for the previous Bash audit during this compatibility release.",
+        help: "Read-only host audit with stable remediation IDs. Use --format json for automation.",
     },
     MenuCommand {
-        label: "Fix services",
-        operation: Some("fix"),
-        help: "Enable and start installed Docker and Tailscale services. SSH and firewall settings are left unchanged.",
+        label: "Plan",
+        operation: Some("plan"),
+        help: "Compare desired configuration with the host and review proposed remediations.",
     },
     MenuCommand {
-        label: "Security status",
-        operation: Some("security-status"),
-        help: "Review SSH daemon policy, firewall rules, fail2ban, and Tailscale status.",
-    },
-    MenuCommand {
-        label: "Tailscale status",
-        operation: Some("tailscale-status"),
-        help: "Show current Tailscale connectivity and peer status.",
-    },
-    MenuCommand {
-        label: "Configure rclone",
-        operation: Some("rclone-config"),
-        help: "Open rclone's interactive configuration. Answers are forwarded to its terminal session.",
-    },
-    MenuCommand {
-        label: "Upgrade Mistborn",
-        operation: Some("upgrade"),
-        help: "Check for the latest stable Mistborn Bootstrap release and refresh the installed tool.",
-    },
-    MenuCommand {
-        label: "Update Runtipi",
-        operation: Some("update-runtipi"),
-        help: "Snapshot installed apps, then update Runtipi core, app stores, and apps.",
-    },
-    MenuCommand {
-        label: "Update apps",
-        operation: Some("update-apps"),
-        help: "Update all installed apps with snapshots. You can pass app references or --no-backup to mistborn update-apps.",
-    },
-    MenuCommand {
-        label: "Update core",
-        operation: Some("update-core"),
-        help: "Update Runtipi core (latest by default), with app snapshots unless --no-backup is passed.",
-    },
-    MenuCommand {
-        label: "Update app stores",
-        operation: Some("update-appstores"),
-        help: "Refresh Runtipi app-store metadata.",
+        label: "Reconcile",
+        operation: Some("reconcile"),
+        help: "Review and approve host remediations. Access-sensitive changes require explicit approval.",
     },
     MenuCommand {
         label: "Quit",
@@ -461,35 +419,14 @@ fn draw(
 
 fn command_help(operation: &str) -> &'static str {
     match operation {
-        "status" => {
-            "Rust read-only overview with component versions; use --format json for automation or --legacy for the previous Bash report during this release."
-        }
+        "status" => "Read-only overview with component versions; use --format json for automation.",
         "doctor" => {
-            "Rust read-only host audit with stable remediation IDs; use --format json or --legacy for the previous Bash audit during this release."
+            "Read-only host audit with stable remediation IDs; use --format json for automation."
         }
-        "fix" => {
-            "Enables and starts installed Docker and Tailscale services. SSH and firewall settings remain unchanged."
+        "plan" => "Read-only desired-versus-observed host plan with remediation IDs.",
+        "reconcile" => {
+            "Review and approve changes; access-sensitive work requires explicit approval."
         }
-        "security-status" => {
-            "Shows SSH daemon policy, firewall rules, fail2ban status, and Tailscale state."
-        }
-        "tailscale-status" => "Shows current Tailscale connectivity and peer status.",
-        "rclone-config" => {
-            "Interactive rclone configuration. Use the terminal panel below to answer prompts."
-        }
-        "upgrade" | "update" => {
-            "Checks for the latest stable Mistborn Bootstrap release and refreshes the installed tool."
-        }
-        "update-runtipi" => {
-            "Snapshots installed apps, then updates Runtipi core, app stores, and installed apps."
-        }
-        "update-apps" => {
-            "Updates selected apps or all installed apps. Snapshots are created unless --no-backup is specified."
-        }
-        "update-core" => {
-            "Updates Runtipi core. Installed apps are snapshotted unless --no-backup is specified."
-        }
-        "update-appstores" => "Refreshes Runtipi app-store metadata.",
         _ => {
             "Mistborn host command. Review the command output below; press any key when it finishes to return."
         }

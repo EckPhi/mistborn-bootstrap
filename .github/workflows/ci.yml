@@ -21,10 +21,12 @@ jobs:
         run: bash tests/versioning.sh
       - name: Test generated module options
         run: bash tests/generated.sh
+      - name: Test rclone service preflight
+        run: bash tests/rclone_service.sh
+      - name: Test rclone service version upgrade
+        run: bash tests/rclone_upgrade.sh
       - name: Test desired-state configuration install
         run: bash tests/config-install.sh
-      - name: Test host status verification
-        run: bash tests/status.sh
       - name: Test collection-task migration coverage
         run: bash tests/task-coverage.sh
       - name: Check generated scripts
@@ -32,5 +34,4 @@ jobs:
           git diff --exit-code -- dist/
           bash -n install.sh
           shellcheck -x install.sh lib/*.sh modules/*.sh tools/*.sh dist/*.sh tests/*.sh
-          shellcheck assets/mistborn
           for script in dist/*.sh; do sudo bash "$script" --dry-run --yes --user runner; done

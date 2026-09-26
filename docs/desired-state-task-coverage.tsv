@@ -11,9 +11,10 @@ server	tailscale	install	retained Bash adapter	-	Uses the official installer; pa
 server	tailscale	forwarding	retained Bash adapter	-	Configures persistent IPv4 and IPv6 forwarding outside current typed preferences.
 server	tailscale	connect	intentionally unsupported	-	Tailnet enrollment and authentication remain operator-driven, not reconciliation.
 server	tailscale	auto-update	migrated	security/tailscale-auto-update	Tailscale preference has its own typed remediation and verification.
-server	runtipi	install	retained Bash adapter	-	Official third-party installer remains an explicit shell adapter.
 server	rclone	package	retained Bash adapter	-	Package is not currently a typed desired-state resource.
 server	rclone	configuration	intentionally unsupported	-	Interactive credential/configuration workflow is not host reconciliation.
+server	rclone_service	service	intentionally unsupported	-	Interactive service credentials and remotes remain a separately confirmed installer workflow, not reconciliation.
+server	runtipi	install	retained Bash adapter	-	Official third-party installer remains an explicit shell adapter.
 server	security	packages	retained Bash adapter	-	The task installs two packages, but no task-level bridge currently preserves its grouped scope.
 server	security	ssh	retained Bash adapter	-	Rust separates SSH from fail2ban policy; no task-level bridge currently preserves the legacy task's combined behavior.
 server	security	firewall	migrated	security/ufw	Base firewall policy and required ports have a typed access-gated remediation.

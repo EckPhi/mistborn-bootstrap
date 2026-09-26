@@ -99,7 +99,6 @@ module_toolset_apply() {
   if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
     ui_info "Would install /usr/local/bin/mistborn and its Ratatui runner"
   else
-    install -d -m 0755 /usr/local/lib/mistborn
     if mistborn_task_selected runner; then
     mistborn_task_start runner
     if [[ -n "${MISTBORN_RUNNER_BINARY:-}" && -x "$MISTBORN_RUNNER_BINARY" && "$MISTBORN_RUNNER_BINARY" != /usr/local/bin/mistborn-bootstrap ]]; then
@@ -111,26 +110,12 @@ module_toolset_apply() {
     fi
     if mistborn_task_selected command; then
     mistborn_task_start command
-    install -d -m 0755 /usr/local/lib/mistborn/plans
-    local staging_dir
-    staging_dir="$(mktemp -d /usr/local/lib/mistborn/.install.XXXXXX)"
-    printf '%s' "$MISTBORN_TOOL_B64" | base64 -d >"$staging_dir/host.sh"
-    chmod 0644 "$staging_dir/host.sh"
-    printf '%s' "$MISTBORN_UPDATE_PLAN_B64" | base64 -d >"$staging_dir/update.toml"
-    chmod 0644 "$staging_dir/update.toml"
-    mv -f "$staging_dir/host.sh" /usr/local/lib/mistborn/host.sh
-    mv -f "$staging_dir/update.toml" /usr/local/lib/mistborn/plans/update.toml
-    rmdir "$staging_dir"
+    [[ -x /usr/local/bin/mistborn-bootstrap ]] || {
+      ui_error "Cannot install mistborn: Rust runner is missing"
+      return 1
+    }
     mistborn_publish_desired_config /etc/mistborn /usr/local/share/mistborn "${MISTBORN_RUNNER_BINARY:-/usr/local/bin/mistborn-bootstrap}"
-    cat >/usr/local/bin/mistborn <<'MISTBORN_LAUNCHER'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-if [[ -x /usr/local/bin/mistborn-bootstrap ]]; then
-  exec /usr/local/bin/mistborn-bootstrap host --script /usr/local/lib/mistborn/host.sh "$@"
-fi
-exec bash /usr/local/lib/mistborn/host.sh "$@"
-MISTBORN_LAUNCHER
-    chmod 0755 /usr/local/bin/mistborn
+    install -m 0755 /usr/local/bin/mistborn-bootstrap /usr/local/bin/mistborn
     mistborn_task_complete command
     fi
   fi

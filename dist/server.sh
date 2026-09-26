@@ -5,9 +5,7 @@ MISTBORN_DRY_RUN=0
 MISTBORN_YES=0
 MISTBORN_ONLY=""
 MISTBORN_TASKS=""
-MISTBORN_MODULES=( common docker zsh tailscale runtipi rclone security toolset )
-export MISTBORN_TOOL_B64='IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLUVldW8gcGlwZWZhaWwKClJVTlRJUElfUEFUSD0iJHtSVU5USVBJX1BBVEg6LS9vcHQvcnVudGlwaX0iCk1JU1RCT1JOX1NUQVRFX0RJUj0iJHtNSVNUQk9STl9TVEFURV9ESVI6LS92YXIvbGliL21pc3Rib3JuLWJvb3RzdHJhcH0iCk1JU1RCT1JOX1JVTk5FUl9QQVRIPSIke01JU1RCT1JOX1JVTk5FUl9QQVRIOi0vdXNyL2xvY2FsL2Jpbi9taXN0Ym9ybi1ib290c3RyYXB9IgpNSVNUQk9STl9QTEVYX1VGV19QUk9GSUxFPSIke01JU1RCT1JOX1BMRVhfVUZXX1BST0ZJTEU6LS9ldGMvdWZ3L2FwcGxpY2F0aW9ucy5kL3BsZXhtZWRpYXNlcnZlcn0iCgpkaWUoKSB7IHByaW50ZiAnZXJyb3I6ICVzXG4nICIkKiIgPiYyOyBleGl0IDE7IH0KdGFza19ldmVudCgpIHsKICBbWyAtbiAiJHtNSVNUQk9STl9QUk9HUkVTU19GSUxFOi19IiBdXSB8fCByZXR1cm4gMAogIHByaW50ZiAnJXNcdCVzXHQlc1xuJyAiJDEiICIkMiIgIiQzIiA+PiIkTUlTVEJPUk5fUFJPR1JFU1NfRklMRSIgfHwgdHJ1ZQp9CnJ1bnRpcGlfY2xpKCkgewogIGlmIFtbIC14ICIkUlVOVElQSV9QQVRIL3J1bnRpcGktY2xpIiBdXTsgdGhlbiBwcmludGYgJyVzXG4nICIkUlVOVElQSV9QQVRIL3J1bnRpcGktY2xpIgogIGVsaWYgY29tbWFuZCAtdiBydW50aXBpLWNsaSA+L2Rldi9udWxsOyB0aGVuIGNvbW1hbmQgLXYgcnVudGlwaS1jbGkKICBlbHNlIGRpZSAicnVudGlwaS1jbGkgbm90IGZvdW5kIHVuZGVyICRSVU5USVBJX1BBVEggb3IgUEFUSCI7IGZpCn0KcnVuX3J1bnRpcGkoKSB7ICIkKHJ1bnRpcGlfY2xpKSIgIiRAIjsgfQphcHBfcmVmcygpIHsKICBsb2NhbCBzdG9yZSBhcHAKICBmb3Igc3RvcmUgaW4gIiRSVU5USVBJX1BBVEgiL2FwcHMvKjsgZG8KICAgIFtbIC1kICIkc3RvcmUiIF1dIHx8IGNvbnRpbnVlCiAgICBmb3IgYXBwIGluICIkc3RvcmUiLyo7IGRvIFtbIC1kICIkYXBwIiBdXSAmJiBwcmludGYgJyVzOiVzXG4nICIkKGJhc2VuYW1lICIkYXBwIikiICIkKGJhc2VuYW1lICIkc3RvcmUiKSI7IGRvbmUKICBkb25lCn0Kc25hcHNob3RfYXBwcygpIHsgbG9jYWwgcmVmOyB3aGlsZSBJRlM9IHJlYWQgLXIgcmVmOyBkbyBydW5fcnVudGlwaSBhcHAgYmFja3VwICIkcmVmIjsgZG9uZTsgfQoKcmVwb3J0X2NvbW1hbmRfdmVyc2lvbigpIHsKICBsb2NhbCBjb21tYW5kPSIkMSIgdmVyc2lvbgogIGlmICEgY29tbWFuZCAtdiAiJGNvbW1hbmQiID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgcHJpbnRmICcgIFdBUk4gICVzIG5vdCBpbnN0YWxsZWRcbicgIiRjb21tYW5kIgogICAgcmV0dXJuIDAKICBmaQogIHZlcnNpb249IiQoJGNvbW1hbmQgLS12ZXJzaW9uIDI+JjEgfCBoZWFkIC1uMSB8fCB0cnVlKSIKICBbWyAtbiAiJHZlcnNpb24iIF1dIHx8IHZlcnNpb249Imluc3RhbGxlZCAodmVyc2lvbiB1bmF2YWlsYWJsZSkiCiAgcHJpbnRmICcgIFBBU1MgICVzOiAlc1xuJyAiJGNvbW1hbmQiICIkdmVyc2lvbiIKfQoKYm9vdHN0cmFwX3N0YXRlX3N0YXR1cygpIHsKICBsb2NhbCBzdGF0ZV9maWxlPSIkTUlTVEJPUk5fU1RBVEVfRElSL3NlcnZlci5qc29uIgogIHByaW50ZiAnXG5Cb290c3RyYXAgc3RhdGVcbicKICBpZiBbWyAhIC1yICIkc3RhdGVfZmlsZSIgXV07IHRoZW4KICAgIHByaW50ZiAnICBXQVJOICBubyByZWFkYWJsZSBzZXJ2ZXIgc3RhdGUgYXQgJXNcbicgIiRzdGF0ZV9maWxlIgogICAgcmV0dXJuIDAKICBmaQogIGlmICEgY29tbWFuZCAtdiBweXRob24zID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgcHJpbnRmICcgIFdBUk4gIHB5dGhvbjMgdW5hdmFpbGFibGU7IGNhbm5vdCBpbnNwZWN0ICVzXG4nICIkc3RhdGVfZmlsZSIKICAgIHJldHVybiAwCiAgZmkKICBweXRob24zIC0gIiRzdGF0ZV9maWxlIiA8PCdQWScKaW1wb3J0IGpzb24KaW1wb3J0IHN5cwpmcm9tIGRhdGV0aW1lIGltcG9ydCBkYXRldGltZSwgdGltZXpvbmUKCnBhdGggPSBzeXMuYXJndlsxXQp0cnk6CiAgICB3aXRoIG9wZW4ocGF0aCwgZW5jb2Rpbmc9InV0Zi04IikgYXMgaGFuZGxlOgogICAgICAgIHN0YXRlID0ganNvbi5sb2FkKGhhbmRsZSkKZXhjZXB0IChPU0Vycm9yLCBWYWx1ZUVycm9yKSBhcyBlcnJvcjoKICAgIHByaW50KGYiICBGQUlMICBzdGF0ZSB1bnJlYWRhYmxlOiB7ZXJyb3J9IikKICAgIHJhaXNlIFN5c3RlbUV4aXQoMSkKCnZlcnNpb24gPSBzdGF0ZS5nZXQoInZlcnNpb24iLCAidW5rbm93biIpCnVwZGF0ZWQgPSBzdGF0ZS5nZXQoInVwZGF0ZWRfYXQiKQpzdGFtcCA9ICJ1bmtub3duIgppZiBpc2luc3RhbmNlKHVwZGF0ZWQsIChpbnQsIGZsb2F0KSk6CiAgICBzdGFtcCA9IGRhdGV0aW1lLmZyb210aW1lc3RhbXAodXBkYXRlZCwgdHo9dGltZXpvbmUudXRjKS5pc29mb3JtYXQoKQpwcmludChmIiAgUEFTUyAgc2NoZW1hIHZ7dmVyc2lvbn07IHVwZGF0ZWQge3N0YW1wfSIpCmZhaWxlZCA9IEZhbHNlCmZvciBuYW1lLCBtb2R1bGUgaW4gc3RhdGUuZ2V0KCJtb2R1bGVzIiwge30pLml0ZW1zKCk6CiAgICBzdGF0dXMgPSBtb2R1bGUuZ2V0KCJzdGF0dXMiLCAidW5rbm93biIpCiAgICBtYXJrZXIgPSAiUEFTUyIgaWYgc3RhdHVzID09ICJjb21wbGV0ZWQiIGVsc2UgIldBUk4iCiAgICBpZiBzdGF0dXMgPT0gImZhaWxlZCI6CiAgICAgICAgbWFya2VyID0gIkZBSUwiCiAgICAgICAgZmFpbGVkID0gVHJ1ZQogICAgcHJpbnQoZiIgIHttYXJrZXI6PDR9ICB7bmFtZX06IHtzdGF0dXN9IikKcmFpc2UgU3lzdGVtRXhpdCgxIGlmIGZhaWxlZCBlbHNlIDApClBZCn0KCnN0YXRlX3Rhc2tfc3RhdHVzKCkgewogIGxvY2FsIG1vZHVsZT0iJDEiIHRhc2s9IiQyIiBzdGF0ZV9maWxlPSIkTUlTVEJPUk5fU1RBVEVfRElSL3NlcnZlci5qc29uIgogIGlmIFtbICEgLXIgIiRzdGF0ZV9maWxlIiBdXSB8fCAhIGNvbW1hbmQgLXYgcHl0aG9uMyA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIHByaW50ZiAndW5rbm93blxuJwogICAgcmV0dXJuIDAKICBmaQogIHB5dGhvbjMgLSAiJHN0YXRlX2ZpbGUiICIkbW9kdWxlIiAiJHRhc2siIDw8J1BZJyAyPi9kZXYvbnVsbCB8fCBwcmludGYgJ3Vua25vd25cbicKaW1wb3J0IGpzb24KaW1wb3J0IHN5cwp0cnk6CiAgICB3aXRoIG9wZW4oc3lzLmFyZ3ZbMV0sIGVuY29kaW5nPSJ1dGYtOCIpIGFzIGhhbmRsZToKICAgICAgICBzdGF0ZSA9IGpzb24ubG9hZChoYW5kbGUpCiAgICB0YXNrID0gc3RhdGUuZ2V0KCJtb2R1bGVzIiwge30pLmdldChzeXMuYXJndlsyXSwge30pLmdldCgidGFza3MiLCB7fSkuZ2V0KHN5cy5hcmd2WzNdLCB7fSkKICAgIHByaW50KHRhc2sgaWYgaXNpbnN0YW5jZSh0YXNrLCBzdHIpIGVsc2UgdGFzay5nZXQoInN0YXR1cyIsICJ1bmtub3duIikpCmV4Y2VwdCAoT1NFcnJvciwgVmFsdWVFcnJvcik6CiAgICBwcmludCgidW5rbm93biIpClBZCn0KCmNvbmZpZ3VyYXRpb25fc3RhdHVzKCkgewogIGxvY2FsIGZhaWx1cmVzPTAgc3NoX3BvbGljeSB1ZndfcG9saWN5IHRhaWxzY2FsZV9qc29uIHRhaWxzY2FsZV9wcmVmcwogIGxvY2FsIHNzaF9leHBlY3RlZCBmaXJld2FsbF9leHBlY3RlZCBwbGV4X2V4cGVjdGVkIGZhaWwyYmFuX2V4cGVjdGVkIGZvcndhcmRpbmdfZXhwZWN0ZWQgdGFpbHNjYWxlX29ubHlfZXhwZWN0ZWQKICBzc2hfZXhwZWN0ZWQ9IiQoc3RhdGVfdGFza19zdGF0dXMgc2VjdXJpdHkgc3NoKSIKICBmaXJld2FsbF9leHBlY3RlZD0iJChzdGF0ZV90YXNrX3N0YXR1cyBzZWN1cml0eSBmaXJld2FsbCkiCiAgcGxleF9leHBlY3RlZD0iJChzdGF0ZV90YXNrX3N0YXR1cyBzZWN1cml0eSBwbGV4LWZpcmV3YWxsKSIKICBmYWlsMmJhbl9leHBlY3RlZD0iJChzdGF0ZV90YXNrX3N0YXR1cyBzZWN1cml0eSBmYWlsMmJhbikiCiAgZm9yd2FyZGluZ19leHBlY3RlZD0iJChzdGF0ZV90YXNrX3N0YXR1cyB0YWlsc2NhbGUgZm9yd2FyZGluZykiCiAgdGFpbHNjYWxlX29ubHlfZXhwZWN0ZWQ9IiQoc3RhdGVfdGFza19zdGF0dXMgc2VjdXJpdHkgdGFpbHNjYWxlLW9ubHkpIgogIHByaW50ZiAnXG5FZmZlY3RpdmUgY29uZmlndXJhdGlvblxuJwoKICBpZiBjb21tYW5kIC12IHNzaGQgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICBzc2hfcG9saWN5PSIkKHNzaGQgLVQgMj4vZGV2L251bGwgfHwgdHJ1ZSkiCiAgICBpZiBncmVwIC1xeCAncGFzc3dvcmRhdXRoZW50aWNhdGlvbiBubycgPDw8IiRzc2hfcG9saWN5IjsgdGhlbgogICAgICBwcmludGYgJyAgUEFTUyAgU1NIIHBhc3N3b3JkIGF1dGhlbnRpY2F0aW9uIGRpc2FibGVkXG4nCiAgICBlbGlmIFtbICIkc3NoX2V4cGVjdGVkIiA9PSBjb21wbGV0ZWQgXV07IHRoZW4KICAgICAgcHJpbnRmICcgIEZBSUwgIFNTSCBwYXNzd29yZCBhdXRoZW50aWNhdGlvbiBkcmlmdGVkIGZyb20gYXBwbGllZCBoYXJkZW5pbmdcbicKICAgICAgZmFpbHVyZXM9MQogICAgZWxzZQogICAgICBwcmludGYgJyAgV0FSTiAgU1NIIHBhc3N3b3JkIGF1dGhlbnRpY2F0aW9uIGlzIG5vdCBkaXNhYmxlZFxuJwogICAgZmkKICAgIGlmIGdyZXAgLXF4ICdwZXJtaXRyb290bG9naW4gbm8nIDw8PCIkc3NoX3BvbGljeSI7IHRoZW4KICAgICAgcHJpbnRmICcgIFBBU1MgIFNTSCByb290IGxvZ2luIGRpc2FibGVkXG4nCiAgICBlbGlmIFtbICIkc3NoX2V4cGVjdGVkIiA9PSBjb21wbGV0ZWQgXV07IHRoZW4KICAgICAgcHJpbnRmICcgIEZBSUwgIFNTSCByb290LWxvZ2luIHBvbGljeSBkcmlmdGVkIGZyb20gYXBwbGllZCBoYXJkZW5pbmdcbicKICAgICAgZmFpbHVyZXM9MQogICAgZWxzZQogICAgICBwcmludGYgJyAgV0FSTiAgU1NIIHJvb3QgbG9naW4gaXMgbm90IGZ1bGx5IGRpc2FibGVkXG4nCiAgICBmaQogICAgcHJpbnRmICcgIElORk8gIFNTSCAlc1xuJyAiJChncmVwIC1tMSAnXnBvcnQgJyA8PDwiJHNzaF9wb2xpY3kiIHx8IHByaW50ZiAncG9ydCB1bmtub3duJykiCiAgZWxzZQogICAgcHJpbnRmICcgIFdBUk4gIHNzaGQgdW5hdmFpbGFibGU7IFNTSCBwb2xpY3kgbm90IGNoZWNrZWRcbicKICBmaQoKICBpZiBjb21tYW5kIC12IHVmdyA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIHVmd19wb2xpY3k9IiQodWZ3IHN0YXR1cyB2ZXJib3NlIDI+L2Rldi9udWxsIHx8IHRydWUpIgogICAgaWYgZ3JlcCAtcSAnXlN0YXR1czogYWN0aXZlJyA8PDwiJHVmd19wb2xpY3kiOyB0aGVuCiAgICAgIHByaW50ZiAnICBQQVNTICBVRlcgYWN0aXZlXG4nCiAgICBlbGlmIFtbICIkZmlyZXdhbGxfZXhwZWN0ZWQiID09IGNvbXBsZXRlZCBdXTsgdGhlbgogICAgICBwcmludGYgJyAgRkFJTCAgVUZXIGluYWN0aXZlIGFmdGVyIGZpcmV3YWxsIHRhc2sgd2FzIGFwcGxpZWRcbicKICAgICAgZmFpbHVyZXM9MQogICAgZWxzZQogICAgICBwcmludGYgJyAgV0FSTiAgVUZXIGluYWN0aXZlXG4nCiAgICBmaQogICAgaWYgZ3JlcCAtRXEgJ15EZWZhdWx0OiBkZW55IFwoaW5jb21pbmdcKScgPDw8IiR1ZndfcG9saWN5IjsgdGhlbgogICAgICBwcmludGYgJyAgUEFTUyAgVUZXIGRlZmF1bHQgaW5jb21pbmcgcG9saWN5IGlzIGRlbnlcbicKICAgIGVsaWYgW1sgIiRmaXJld2FsbF9leHBlY3RlZCIgPT0gY29tcGxldGVkIF1dOyB0aGVuCiAgICAgIHByaW50ZiAnICBGQUlMICBVRlcgaW5jb21pbmcgcG9saWN5IGRyaWZ0ZWQgZnJvbSBhcHBsaWVkIGhhcmRlbmluZ1xuJwogICAgICBmYWlsdXJlcz0xCiAgICBlbHNlCiAgICAgIHByaW50ZiAnICBXQVJOICBVRlcgZGVmYXVsdCBpbmNvbWluZyBwb2xpY3kgaXMgbm90IGRlbnlcbicKICAgIGZpCiAgICBpZiBbWyAiJHBsZXhfZXhwZWN0ZWQiID09IGNvbXBsZXRlZCAmJiAhIC1mICIkTUlTVEJPUk5fUExFWF9VRldfUFJPRklMRSIgXV07IHRoZW4KICAgICAgcHJpbnRmICcgIEZBSUwgIGFwcGxpZWQgUGxleCBVRlcgcHJvZmlsZSBpcyBtaXNzaW5nXG4nCiAgICAgIGZhaWx1cmVzPTEKICAgIGVsaWYgW1sgLWYgIiRNSVNUQk9STl9QTEVYX1VGV19QUk9GSUxFIiBdXTsgdGhlbgogICAgICBpZiBncmVwIC1FcSAnXjMyNDAwL3RjcFtbOnNwYWNlOl1dK0FMTE9XJyA8PDwiJHVmd19wb2xpY3kiOyB0aGVuCiAgICAgICAgcHJpbnRmICcgIFBBU1MgIFBsZXggcmVtb3RlLWFjY2VzcyBydWxlIHByZXNlbnRcbicKICAgICAgZWxzZQogICAgICAgIHByaW50ZiAnICBGQUlMICBQbGV4IHByb2ZpbGUgaW5zdGFsbGVkIGJ1dCBUQ1AgMzI0MDAgYWxsb3cgcnVsZSBtaXNzaW5nXG4nCiAgICAgICAgZmFpbHVyZXM9MQogICAgICBmaQogICAgICBpZiBncmVwIC1FcSAncGxleG1lZGlhc2VydmVyLWFsbC4qdGFpbHNjYWxlMHx0YWlsc2NhbGUwLipwbGV4bWVkaWFzZXJ2ZXItYWxsJyA8PDwiJHVmd19wb2xpY3kiOyB0aGVuCiAgICAgICAgcHJpbnRmICcgIFBBU1MgIFBsZXggbG9jYWwgc2VydmljZXMgYWxsb3dlZCB0aHJvdWdoIHRhaWxzY2FsZTBcbicKICAgICAgZWxzZQogICAgICAgIHByaW50ZiAnICBJTkZPICBubyBQbGV4IGxvY2FsLXNlcnZpY2VzIHJ1bGUgb24gdGFpbHNjYWxlMFxuJwogICAgICBmaQogICAgZmkKICBlbHNlCiAgICBwcmludGYgJyAgV0FSTiAgVUZXIHVuYXZhaWxhYmxlOyBmaXJld2FsbCBwb2xpY3kgbm90IGNoZWNrZWRcbicKICBmaQoKICBpZiBjb21tYW5kIC12IGZhaWwyYmFuLWNsaWVudCA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIGlmIGZhaWwyYmFuLWNsaWVudCBzdGF0dXMgc3NoZCA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgICAgcHJpbnRmICcgIFBBU1MgIGZhaWwyYmFuIHNzaGQgamFpbCBhY3RpdmVcbicKICAgIGVsaWYgW1sgIiRmYWlsMmJhbl9leHBlY3RlZCIgPT0gY29tcGxldGVkIF1dOyB0aGVuCiAgICAgIHByaW50ZiAnICBGQUlMICBmYWlsMmJhbiBzc2hkIGphaWwgaW5hY3RpdmUgYWZ0ZXIgdGFzayB3YXMgYXBwbGllZFxuJwogICAgICBmYWlsdXJlcz0xCiAgICBlbHNlCiAgICAgIHByaW50ZiAnICBXQVJOICBmYWlsMmJhbiBzc2hkIGphaWwgdW5hdmFpbGFibGVcbicKICAgIGZpCiAgZmkKCiAgaWYgY29tbWFuZCAtdiB0YWlsc2NhbGUgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICB0YWlsc2NhbGVfanNvbj0iJCh0YWlsc2NhbGUgc3RhdHVzIC0tanNvbiAyPi9kZXYvbnVsbCB8fCB0cnVlKSIKICAgIGlmIGdyZXAgLUVxICciQmFja2VuZFN0YXRlIltbOnNwYWNlOl1dKjpbWzpzcGFjZTpdXSoiUnVubmluZyInIDw8PCIkdGFpbHNjYWxlX2pzb24iOyB0aGVuCiAgICAgIHByaW50ZiAnICBQQVNTICBUYWlsc2NhbGUgYmFja2VuZCBydW5uaW5nXG4nCiAgICBlbHNlCiAgICAgIHByaW50ZiAnICBGQUlMICBUYWlsc2NhbGUgYmFja2VuZCBub3QgcnVubmluZ1xuJwogICAgICBmYWlsdXJlcz0xCiAgICBmaQogICAgdGFpbHNjYWxlX3ByZWZzPSIkKHRhaWxzY2FsZSBkZWJ1ZyBwcmVmcyAyPi9kZXYvbnVsbCB8fCB0cnVlKSIKICAgIGlmIGdyZXAgLUVxICciUnVuU1NIIltbOnNwYWNlOl1dKjpbWzpzcGFjZTpdXSp0cnVlJyA8PDwiJHRhaWxzY2FsZV9wcmVmcyI7IHRoZW4KICAgICAgcHJpbnRmICcgIElORk8gIFRhaWxzY2FsZSBTU0ggZW5hYmxlZFxuJwogICAgZWxpZiBbWyAiJHRhaWxzY2FsZV9vbmx5X2V4cGVjdGVkIiA9PSBjb21wbGV0ZWQgXV07IHRoZW4KICAgICAgcHJpbnRmICcgIEZBSUwgIFRhaWxzY2FsZSBTU0ggZGlzYWJsZWQgYWZ0ZXIgVGFpbHNjYWxlLW9ubHkgdGFzayB3YXMgYXBwbGllZFxuJwogICAgICBmYWlsdXJlcz0xCiAgICBlbHNlCiAgICAgIHByaW50ZiAnICBJTkZPICBUYWlsc2NhbGUgU1NIIGRpc2FibGVkIG9yIHVuYXZhaWxhYmxlXG4nCiAgICBmaQogICAgaWYgZ3JlcCAtRXEgJyJBZHZlcnRpc2VSb3V0ZXMiW1s6c3BhY2U6XV0qOltbOnNwYWNlOl1dKlxbW15dXScgPDw8IiR0YWlsc2NhbGVfcHJlZnMiOyB0aGVuCiAgICAgIHByaW50ZiAnICBJTkZPICBUYWlsc2NhbGUgcm91dGVzIGFyZSBhZHZlcnRpc2VkXG4nCiAgICBlbGlmIFtbICIkZm9yd2FyZGluZ19leHBlY3RlZCIgPT0gY29tcGxldGVkIF1dOyB0aGVuCiAgICAgIHByaW50ZiAnICBGQUlMICBubyByb3V0ZXMgYWR2ZXJ0aXNlZCBhZnRlciBleGl0LW5vZGUgZm9yd2FyZGluZyB0YXNrIHdhcyBhcHBsaWVkXG4nCiAgICAgIGZhaWx1cmVzPTEKICAgIGVsc2UKICAgICAgcHJpbnRmICcgIElORk8gIG5vIFRhaWxzY2FsZSByb3V0ZXMgYWR2ZXJ0aXNlZFxuJwogICAgZmkKICBlbHNlCiAgICBwcmludGYgJyAgV0FSTiAgVGFpbHNjYWxlIHVuYXZhaWxhYmxlOyBjb25maWd1cmF0aW9uIG5vdCBjaGVja2VkXG4nCiAgZmkKICByZXR1cm4gIiRmYWlsdXJlcyIKfQoKZG9jdG9yKCkgewogIGxvY2FsIGZhaWx1cmVzPTAKICBwcmludGYgJ01pc3Rib3JuIGhvc3QgZGlhZ25vc3RpY3NcbicKICBmb3IgY29tbWFuZCBpbiBkb2NrZXIgdGFpbHNjYWxlIHJjbG9uZSB1ZncgZmFpbDJiYW4tY2xpZW50OyBkbwogICAgaWYgY29tbWFuZCAtdiAiJGNvbW1hbmQiID4vZGV2L251bGwgMj4mMTsgdGhlbiBwcmludGYgJyAgUEFTUyAgJXMgaW5zdGFsbGVkXG4nICIkY29tbWFuZCI7IGVsc2UgcHJpbnRmICcgIFdBUk4gICVzIG1pc3NpbmdcbicgIiRjb21tYW5kIjsgZmkKICBkb25lCiAgaWYgW1sgLWQgIiRSVU5USVBJX1BBVEgiIF1dOyB0aGVuIHByaW50ZiAnICBQQVNTICBSdW50aXBpIGRpcmVjdG9yeTogJXNcbicgIiRSVU5USVBJX1BBVEgiOyBlbHNlIHByaW50ZiAnICBGQUlMICBSdW50aXBpIGRpcmVjdG9yeSBtaXNzaW5nXG4nOyBmYWlsdXJlcz0xOyBmaQogIGlmIGRvY2tlciBpbmZvID4vZGV2L251bGwgMj4mMTsgdGhlbiBwcmludGYgJyAgUEFTUyAgRG9ja2VyIGRhZW1vbiByZWFjaGFibGVcbic7IGVsc2UgcHJpbnRmICcgIEZBSUwgIERvY2tlciBkYWVtb24gdW5yZWFjaGFibGVcbic7IGZhaWx1cmVzPTE7IGZpCiAgaWYgc3lzdGVtY3RsIGlzLWFjdGl2ZSAtLXF1aWV0IGZhaWwyYmFuOyB0aGVuIHByaW50ZiAnICBQQVNTICBmYWlsMmJhbiBhY3RpdmVcbic7IGVsc2UgcHJpbnRmICcgIFdBUk4gIGZhaWwyYmFuIGluYWN0aXZlXG4nOyBmaQogIGlmIHVmdyBzdGF0dXMgMj4vZGV2L251bGwgfCBncmVwIC1xICdTdGF0dXM6IGFjdGl2ZSc7IHRoZW4gcHJpbnRmICcgIFBBU1MgIFVGVyBhY3RpdmVcbic7IGVsc2UgcHJpbnRmICcgIFdBUk4gIFVGVyBpbmFjdGl2ZVxuJzsgZmkKICByZXR1cm4gIiRmYWlsdXJlcyIKfQpzdGF0dXMoKSB7CiAgbG9jYWwgZmFpbHVyZXM9MCBzZXJ2aWNlIHZlcnNpb249IiR7TUlTVEJPUk5fQk9PVFNUUkFQX1ZFUlNJT046LXVua25vd259IgogIHByaW50ZiAnTWlzdGJvcm4gaW5zdGFsbGF0aW9uXG4nCiAgcHJpbnRmICcgIElORk8gIGJvb3RzdHJhcCB2ZXJzaW9uOiAlc1xuJyAiJHZlcnNpb24iCiAgZm9yIHNlcnZpY2UgaW4gZG9ja2VyIHRhaWxzY2FsZSByY2xvbmUgdWZ3IGZhaWwyYmFuLWNsaWVudDsgZG8gcmVwb3J0X2NvbW1hbmRfdmVyc2lvbiAiJHNlcnZpY2UiOyBkb25lCiAgaWYgW1sgLXggIiRNSVNUQk9STl9SVU5ORVJfUEFUSCIgXV07IHRoZW4KICAgIHByaW50ZiAnICBQQVNTICBydW5uZXIgaW5zdGFsbGVkOiAlc1xuJyAiJE1JU1RCT1JOX1JVTk5FUl9QQVRIIgogIGVsc2UKICAgIHByaW50ZiAnICBGQUlMICBydW5uZXIgbWlzc2luZzogJXNcbicgIiRNSVNUQk9STl9SVU5ORVJfUEFUSCIKICAgIGZhaWx1cmVzPTEKICBmaQogIGlmIFtbIC1kICIkUlVOVElQSV9QQVRIIiBdXTsgdGhlbgogICAgcHJpbnRmICcgIFBBU1MgIFJ1bnRpcGkgZGlyZWN0b3J5OiAlc1xuJyAiJFJVTlRJUElfUEFUSCIKICBlbHNlCiAgICBwcmludGYgJyAgRkFJTCAgUnVudGlwaSBkaXJlY3RvcnkgbWlzc2luZzogJXNcbicgIiRSVU5USVBJX1BBVEgiCiAgICBmYWlsdXJlcz0xCiAgZmkKCiAgcHJpbnRmICdcblNlcnZpY2VzXG4nCiAgZm9yIHNlcnZpY2UgaW4gZG9ja2VyIHRhaWxzY2FsZWQgZmFpbDJiYW47IGRvCiAgICBpZiAhIGNvbW1hbmQgLXYgc3lzdGVtY3RsID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgICBwcmludGYgJyAgSU5GTyAgc3lzdGVtZCB1bmF2YWlsYWJsZTsgY2Fubm90IGluc3BlY3QgJXNcbicgIiRzZXJ2aWNlIgogICAgICBicmVhawogICAgZWxpZiBzeXN0ZW1jdGwgaXMtYWN0aXZlIC0tcXVpZXQgIiRzZXJ2aWNlIjsgdGhlbgogICAgICBwcmludGYgJyAgUEFTUyAgJXMgYWN0aXZlXG4nICIkc2VydmljZSIKICAgIGVsc2UKICAgICAgcHJpbnRmICcgIFdBUk4gICVzIGluYWN0aXZlXG4nICIkc2VydmljZSIKICAgIGZpCiAgZG9uZQogIGJvb3RzdHJhcF9zdGF0ZV9zdGF0dXMgfHwgZmFpbHVyZXM9MQogIGNvbmZpZ3VyYXRpb25fc3RhdHVzIHx8IGZhaWx1cmVzPTEKICByZXR1cm4gIiRmYWlsdXJlcyIKfQpmaXhfc2VydmljZXMoKSB7CiAgbG9jYWwgc2VydmljZSBjaGFuZ2VkPTAKICBbWyAiJEVVSUQiID09IDAgXV0gfHwgZGllICJydW4gJ21pc3Rib3JuIGZpeCcgd2l0aCBzdWRvIgogIGNvbW1hbmQgLXYgc3lzdGVtY3RsID4vZGV2L251bGwgMj4mMSB8fCBkaWUgInN5c3RlbWQgaXMgcmVxdWlyZWQgdG8gcmVwYWlyIHNlcnZpY2VzIgogIGZvciBzZXJ2aWNlIGluIGRvY2tlciB0YWlsc2NhbGVkOyBkbwogICAgaWYgISBjb21tYW5kIC12ICIkc2VydmljZSIgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICAgIHByaW50ZiAnICBTS0lQICAlcyBpcyBub3QgaW5zdGFsbGVkXG4nICIkc2VydmljZSIKICAgICAgY29udGludWUKICAgIGZpCiAgICBpZiBzeXN0ZW1jdGwgaXMtYWN0aXZlIC0tcXVpZXQgIiRzZXJ2aWNlIiAmJiBzeXN0ZW1jdGwgaXMtZW5hYmxlZCAtLXF1aWV0ICIkc2VydmljZSI7IHRoZW4KICAgICAgcHJpbnRmICcgIFBBU1MgICVzIGlzIGFscmVhZHkgZW5hYmxlZCBhbmQgYWN0aXZlXG4nICIkc2VydmljZSIKICAgIGVsc2UKICAgICAgcHJpbnRmICcgIEZJWCAgIGVuYWJsaW5nIGFuZCBzdGFydGluZyAlc1xuJyAiJHNlcnZpY2UiCiAgICAgIHN5c3RlbWN0bCBlbmFibGUgLS1ub3cgIiRzZXJ2aWNlIgogICAgICBjaGFuZ2VkPTEKICAgIGZpCiAgZG9uZQogIGlmIFtbICIkY2hhbmdlZCIgPT0gMCBdXTsgdGhlbiBwcmludGYgJ0NvcmUgc2VydmljZXMgYXJlIGFscmVhZHkgaGVhbHRoeS5cbic7IGZpCiAgcHJpbnRmICdVRlcgYW5kIFNTSCBzZXR0aW5ncyBhcmUgbGVmdCB1bmNoYW5nZWQ7IHJldmlldyB0aGVtIHdpdGggbWlzdGJvcm4gc2VjdXJpdHktc3RhdHVzLlxuJwp9CnVwZGF0ZV9ydW50aXBpKCkgewogIHByaW50ZiAnVXBkYXRpbmcgUnVudGlwaSBjb3JlICh3aXRoIGFwcCBzbmFwc2hvdHMpLi4uXG4nCiAgdGFza19ldmVudCBjb3JlIHVwZGF0ZSBzdGFydGVkCiAgc25hcHNob3RfYXBwcyA8IDwoYXBwX3JlZnMpCiAgcnVuX3J1bnRpcGkgdXBkYXRlIGxhdGVzdAogIHRhc2tfZXZlbnQgY29yZSB1cGRhdGUgY29tcGxldGVkCiAgcHJpbnRmICdcblVwZGF0aW5nIGFwcCBzdG9yZXMuLi5cbicKICB0YXNrX2V2ZW50IGFwcHN0b3JlcyB1cGRhdGUgc3RhcnRlZAogIHJ1bl9ydW50aXBpIGFwcHN0b3JlIHVwZGF0ZQogIHRhc2tfZXZlbnQgYXBwc3RvcmVzIHVwZGF0ZSBjb21wbGV0ZWQKICBwcmludGYgJ1xuVXBkYXRpbmcgYXBwcyAod2l0aCBzbmFwc2hvdHMpLi4uXG4nCiAgdGFza19ldmVudCBhcHBzIHVwZGF0ZSBzdGFydGVkCiAgdXBkYXRlX2FwcHMKICB0YXNrX2V2ZW50IGFwcHMgdXBkYXRlIGNvbXBsZXRlZAogIHByaW50ZiAnXG5NaXN0Ym9ybiB1cGRhdGVzIGNvbXBsZXRlLlxuJwp9CnVwZGF0ZV9ib290c3RyYXAoKSB7CiAgW1sgIiRFVUlEIiA9PSAwIF1dIHx8IGRpZSAicnVuICdtaXN0Ym9ybiB1cGdyYWRlJyB3aXRoIHN1ZG8iCiAgbG9jYWwgbGF0ZXN0IGN1cnJlbnQgdGVtcF9kaXIgaW5zdGFsbGVyX3VybAogIHRhc2tfZXZlbnQgYm9vdHN0cmFwIHJlbGVhc2Ugc3RhcnRlZAogIHByaW50ZiAnQ2hlY2tpbmcgdGhlIGxhdGVzdCBzdGFibGUgTWlzdGJvcm4gQm9vdHN0cmFwIHJlbGVhc2UuLi5cbicKICBsYXRlc3Q9IiQoY3VybCAtZnNTTCBodHRwczovL2FwaS5naXRodWIuY29tL3JlcG9zL0Vja1BoaS9taXN0Ym9ybi1ib290c3RyYXAvcmVsZWFzZXMvbGF0ZXN0IHwgc2VkIC1uRSAncy9eW1s6c3BhY2U6XV0qInRhZ19uYW1lIjpbWzpzcGFjZTpdXSoiKHZbMC05XStcLlswLTldK1wuWzAtOV0rKSIuKi9cMS9wJyB8IGhlYWQgLW4xKSIgfHwgZGllICJjb3VsZCBub3QgY2hlY2sgR2l0SHViIHJlbGVhc2VzIgogIFtbICIkbGF0ZXN0IiA9fiBedlswLTldK1wuWzAtOV0rXC5bMC05XSskIF1dIHx8IGRpZSAiR2l0SHViIHJldHVybmVkIG5vIHN0YWJsZSBib290c3RyYXAgcmVsZWFzZSIKICB0YXNrX2V2ZW50IGJvb3RzdHJhcCByZWxlYXNlIGNvbXBsZXRlZAogIGN1cnJlbnQ9IiR7TUlTVEJPUk5fQk9PVFNUUkFQX1ZFUlNJT046LXYwLjAuMH0iCiAgY3VycmVudD0iJHtjdXJyZW50I3Z9IgogIGxhdGVzdD0iJHtsYXRlc3Qjdn0iCiAgaWYgW1sgIiQocHJpbnRmICclc1xuJXNcbicgIiRjdXJyZW50IiAiJGxhdGVzdCIgfCBzb3J0IC1WIHwgdGFpbCAtbjEpIiA9PSAiJGN1cnJlbnQiIF1dOyB0aGVuCiAgICBwcmludGYgJ01pc3Rib3JuIEJvb3RzdHJhcCAlcyBpcyBhbHJlYWR5IGN1cnJlbnQuXG4nICIkY3VycmVudCIKICAgIHRhc2tfZXZlbnQgYm9vdHN0cmFwIGluc3RhbGxlciBza2lwcGVkCiAgICByZXR1cm4gMAogIGZpCiAgaW5zdGFsbGVyX3VybD0iaHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL0Vja1BoaS9taXN0Ym9ybi1ib290c3RyYXAvdiR7bGF0ZXN0fS9pbnN0YWxsLnNoIgogIHRlbXBfZGlyPSIkKG1rdGVtcCAtZCkiCiAgdHJhcCAncm0gLXJmICIkdGVtcF9kaXIiJyBSRVRVUk4KICB0YXNrX2V2ZW50IGJvb3RzdHJhcCBpbnN0YWxsZXIgc3RhcnRlZAogIHByaW50ZiAnVXBkYXRpbmcgTWlzdGJvcm4gQm9vdHN0cmFwICVzIOKGkiAlcy4uLlxuJyAiJGN1cnJlbnQiICIkbGF0ZXN0IgogIGN1cmwgLWZzU0wgIiRpbnN0YWxsZXJfdXJsIiAtbyAiJHRlbXBfZGlyL2luc3RhbGwuc2giIHx8IGRpZSAiY291bGQgbm90IGRvd25sb2FkIGJvb3RzdHJhcCBpbnN0YWxsZXIiCiAgTUlTVEJPUk5fVkVSU0lPTj0idiR7bGF0ZXN0fSIgTUlTVEJPUk5fVFVJPTAgYmFzaCAiJHRlbXBfZGlyL2luc3RhbGwuc2giIHNlcnZlciAtLXllcwogIHRhc2tfZXZlbnQgYm9vdHN0cmFwIGluc3RhbGxlciBjb21wbGV0ZWQKICBwcmludGYgJ01pc3Rib3JuIEJvb3RzdHJhcCB1cGRhdGVkIHRvICVzLlxuJyAiJGxhdGVzdCIKfQp1cGRhdGVfYXBwcygpIHsKICBsb2NhbCBiYWNrdXA9MSByZWZzPSgpIHJlZgogIFtbICIkezE6LX0iID09IC0tbm8tYmFja3VwIF1dICYmIHsgYmFja3VwPTA7IHNoaWZ0OyB9CiAgaWYgW1sgJCMgLWd0IDAgXV07IHRoZW4gcmVmcz0oIiRAIik7IGVsc2UgbWFwZmlsZSAtdCByZWZzIDwgPChhcHBfcmVmcyk7IGZpCiAgZm9yIHJlZiBpbiAiJHtyZWZzW0BdfSI7IGRvIFtbICIkYmFja3VwIiA9PSAxIF1dICYmIHJ1bl9ydW50aXBpIGFwcCBiYWNrdXAgIiRyZWYiOyBydW5fcnVudGlwaSBhcHAgdXBkYXRlICIkcmVmIjsgZG9uZQp9CnVzYWdlKCkgewogIGNhdCA8PCdFT0YnClVzYWdlOiBtaXN0Ym9ybiBDT01NQU5EIFtBUkdTXQogIHN0YXR1cyAgICAgICAgICAgICAgICAgICAgICAgdmVyaWZ5IGluc3RhbGxhdGlvbiwgdmVyc2lvbnMsIHN0YXRlIGFuZCBjb25maWd1cmF0aW9uCiAgZG9jdG9yICAgICAgICAgICAgICAgICAgICAgICBhdWRpdCBEb2NrZXIsIFJ1bnRpcGksIFRhaWxzY2FsZSwgcmNsb25lIGFuZCBzZWN1cml0eQogIHBsYW4gW1JFTUVESUFUSU9OXSAgICAgICAgICAgY29tcGFyZSBkZXNpcmVkIGNvbmZpZ3VyYXRpb24gd2l0aCBob3N0IHN0YXRlCiAgcmVjb25jaWxlIFtSRU1FRElBVElPTl0gICAgICBhcHBseSBhbiBhcHByb3ZlZCBob3N0IHJlbWVkaWF0aW9uCiAgZG9jdG9yIC0tZml4IFstLXNhZmVdICAgICAgICBwbGFuIGFuZCByZWNvbmNpbGUgdGhyb3VnaCB0aGUgc2FtZSBzYWZldHkgcG9saWN5CiAgZml4ICAgICAgICAgICAgICAgICAgICAgICAgICBlbmFibGUgYW5kIHN0YXJ0IGluc3RhbGxlZCBEb2NrZXIvVGFpbHNjYWxlIHNlcnZpY2VzCiAgc2VjdXJpdHktc3RhdHVzICAgICAgICAgICAgICBzaG93IFNTSCwgVUZXLCBmYWlsMmJhbiBhbmQgVGFpbHNjYWxlIHN0YXR1cwogIHRhaWxzY2FsZS1zdGF0dXMgICAgICAgICAgICAgc2hvdyBUYWlsc2NhbGUgc3RhdHVzCiAgcmNsb25lLWNvbmZpZyAgICAgICAgICAgICAgICBvcGVuIHJjbG9uZSdzIGNvbmZpZ3VyYXRpb24gVUkKICB1cGRhdGUtYXBwcyBbLS1uby1iYWNrdXBdIFtBUFA6U1RPUkUgLi4uXQogIHVwZGF0ZS1jb3JlIFstLW5vLWJhY2t1cF0gW1ZFUlNJT05dCiAgdXBkYXRlLWFwcHN0b3JlcwogIHVwZ3JhZGUgICAgICAgICAgICAgICAgICAgICAgdXBncmFkZSBNaXN0Ym9ybiBCb290c3RyYXAgdG8gdGhlIGxhdGVzdCBzdGFibGUgcmVsZWFzZQogIHVwZGF0ZSAgICAgICAgICAgICAgICAgICAgICAgYWxpYXMgZm9yIHVwZ3JhZGUKICB1cGRhdGUtcnVudGlwaSAgICAgICAgICAgICAgIHVwZGF0ZSBSdW50aXBpIGNvcmUsIGFwcCBzdG9yZXMgYW5kIGFwcHMgKHdpdGggYmFja3VwcykKRU9GCn0KY2FzZSAiJHsxOi19IiBpbgogIGhlbHB8LWh8LS1oZWxwfCcnKSB1c2FnZSA7OwogIHN0YXR1cykgc3RhdHVzIDs7CiAgZG9jdG9yKSBkb2N0b3IgOzsKICBmaXgpIGZpeF9zZXJ2aWNlcyA7OwogIHNlY3VyaXR5LXN0YXR1cykgc3NoZCAtVCAyPi9kZXYvbnVsbCB8IGdyZXAgLUUgJ3Bhc3N3b3JkYXV0aGVudGljYXRpb258cGVybWl0cm9vdGxvZ2lufF5wb3J0JzsgdWZ3IHN0YXR1cyB2ZXJib3NlOyBmYWlsMmJhbi1jbGllbnQgc3RhdHVzIHNzaGQgfHwgdHJ1ZTsgdGFpbHNjYWxlIHN0YXR1cyB8fCB0cnVlIDs7CiAgdGFpbHNjYWxlLXN0YXR1cykgdGFpbHNjYWxlIHN0YXR1cyA7OwogIHJjbG9uZS1jb25maWcpIHJjbG9uZSBjb25maWcgOzsKICB1cGRhdGUtYXBwcykgc2hpZnQ7IHVwZGF0ZV9hcHBzICIkQCIgOzsKICB1cGRhdGUtY29yZSkgc2hpZnQ7IGJhY2t1cD0xOyBbWyAiJHsxOi19IiA9PSAtLW5vLWJhY2t1cCBdXSAmJiB7IGJhY2t1cD0wOyBzaGlmdDsgfTsgW1sgIiRiYWNrdXAiID09IDEgXV0gJiYgc25hcHNob3RfYXBwcyA8IDwoYXBwX3JlZnMpOyBydW5fcnVudGlwaSB1cGRhdGUgIiR7MTotbGF0ZXN0fSIgOzsKICB1cGRhdGUtYXBwc3RvcmVzKSBydW5fcnVudGlwaSBhcHBzdG9yZSB1cGRhdGUgOzsKICB1cGdyYWRlfHVwZGF0ZSkgdXBkYXRlX2Jvb3RzdHJhcCA7OwogIHVwZGF0ZS1ydW50aXBpKSB1cGRhdGVfcnVudGlwaSA7OwogICopIGRpZSAidW5rbm93biBjb21tYW5kOiAkMSIgOzsKZXNhYwo='
-export MISTBORN_UPDATE_PLAN_B64='dmVyc2lvbiA9IDIKY29sbGVjdGlvbiA9ICJ1cGRhdGUiCgpbW3N0YWdlc11dCmlkID0gImJvb3RzdHJhcCIKdGl0bGUgPSAiTWlzdGJvcm4gQm9vdHN0cmFwIgpoZWxwID0gIkNoZWNrcyB0aGUgbGF0ZXN0IHN0YWJsZSByZWxlYXNlIGFuZCByZXJ1bnMgaXRzIGluc3RhbGxlciB0byByZWZyZXNoIHRoZSBNaXN0Ym9ybiB0b29sIHdoaWxlIHJlc3VtaW5nIGNvbXBsZXRlZCBzZXR1cCBzdGFnZXMuIgpbW3N0YWdlcy50YXNrc11dCmlkID0gInJlbGVhc2UiCnRpdGxlID0gIkNoZWNrIGxhdGVzdCBzdGFibGUgYm9vdHN0cmFwIHJlbGVhc2UiCmFjdGlvbiA9ICJHaXRIdWIgcmVsZWFzZXMvbGF0ZXN0Igp3ZWlnaHQgPSAxCltbc3RhZ2VzLnRhc2tzXV0KaWQgPSAiaW5zdGFsbGVyIgp0aXRsZSA9ICJSZWZyZXNoIE1pc3Rib3JuIHJ1bm5lciBhbmQgY29tbWFuZCIKYWN0aW9uID0gInJ1biB0YWdnZWQgc2VydmVyIGluc3RhbGxlciAocmVzdW1lIGNvbXBsZXRlZCBzdGFnZXMpIgp3ZWlnaHQgPSAzCg=='
+MISTBORN_MODULES=( common docker zsh tailscale rclone rclone_service runtipi security toolset )
 export MISTBORN_CONFIG_B64='IyBNaXN0Ym9ybiBkZXNpcmVkLXN0YXRlIGNvbmZpZ3VyYXRpb24uIE9wdGlvbmFsIHNlY3Rpb25zIGFyZSBvbWl0dGVkIHNvIHRoZQojIGhvc3QgcmVtYWlucyB1bm1hbmFnZWQgdW50aWwgYW4gYWRtaW5pc3RyYXRvciBleHBsaWNpdGx5IGFkb3B0cyBhIHBvbGljeS4KdmVyc2lvbiA9IDEKcHJvZmlsZSA9ICJ2cHMiCg=='
 export MISTBORN_CONFIG_EXAMPLE_B64='dmVyc2lvbiA9IDEKcHJvZmlsZSA9ICJ2cHMiCgpbc3NoXQpwb3J0ID0gMjIKcGFzc3dvcmRfYXV0aGVudGljYXRpb24gPSBmYWxzZQpyb290X2xvZ2luID0gZmFsc2UKCltmaXJld2FsbF0KZW5hYmxlZCA9IHRydWUKZGVmYXVsdF9pbmNvbWluZyA9ICJkZW55IgpwdWJsaWNfdGNwX3BvcnRzID0gWzgwLCA0NDNdCgpbZmlyZXdhbGwucGxleF0KZW5hYmxlZCA9IHRydWUKcHVibGljX3JlbW90ZV9hY2Nlc3MgPSB0cnVlCmxhbl9jaWRyID0gIjE5Mi4xNjguMS4wLzI0Igp0YWlsc2NhbGUgPSB0cnVlCgpbdGFpbHNjYWxlXQpzc2ggPSB0cnVlCmFkdmVydGlzZV9leGl0X25vZGUgPSBmYWxzZQphdXRvX3VwZGF0ZSA9IHRydWUKCltmYWlsMmJhbl0KZW5hYmxlZCA9IHRydWUKCltmYWlsMmJhbi5zc2hkXQplbmFibGVkID0gdHJ1ZQptYXhyZXRyeSA9IDMKYmFudGltZSA9IDM2MDAgIyBzZWNvbmRzCg=='
 # shellcheck shell=bash
@@ -257,6 +255,488 @@ module_tailscale_apply() {
 }
 # shellcheck shell=bash
 
+module_rclone_description="rclone"
+
+mistborn_rclone_min_service_version="1.69.0"
+
+mistborn_rclone_version_at_least() {
+  local actual="$1" required="$2" actual_major actual_minor actual_patch required_major required_minor required_patch actual_suffix required_suffix pair actual_number required_number
+  [[ "$actual" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]] || return 2
+  actual_major="${BASH_REMATCH[1]}" actual_minor="${BASH_REMATCH[2]}" actual_patch="${BASH_REMATCH[3]}" actual_suffix="${BASH_REMATCH[4]:-}"
+  [[ "$required" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]] || return 2
+  required_major="${BASH_REMATCH[1]}" required_minor="${BASH_REMATCH[2]}" required_patch="${BASH_REMATCH[3]}" required_suffix="${BASH_REMATCH[4]:-}"
+
+  for pair in "${actual_major}:${required_major}" "${actual_minor}:${required_minor}" "${actual_patch}:${required_patch}"; do
+    actual_number="${pair%%:*}" required_number="${pair#*:}"
+    actual_number=$((10#$actual_number)) required_number=$((10#$required_number))
+    if (( actual_number > required_number )); then return 0; fi
+    if (( actual_number < required_number )); then return 1; fi
+  done
+  if [[ "$actual_suffix" == -* && -z "$required_suffix" ]]; then return 1; fi
+  return 0
+}
+
+mistborn_rclone_read_version() {
+  local binary="$1" output
+  output="$("$binary" --version 2>&1)" || { ui_error "Cannot inspect rclone at $binary: $output"; return 1; }
+  output="${output%%$'\n'*}"
+  [[ "$output" =~ ^rclone[[:space:]]+v?([0-9]+\.[0-9]+\.[0-9]+([-+][^[:space:]]*)?)$ ]] || {
+    ui_error "Cannot parse rclone version from $binary: $output"; return 1;
+  }
+  printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+mistborn_rclone_verify_service_capability() {
+  local binary="$1" rcd_help global_help
+  rcd_help="$("$binary" rcd --help 2>&1)" || { ui_error "Cannot inspect rclone rcd support in $binary."; return 1; }
+  for flag in --rc-addr --rc-user --rc-pass; do
+    [[ "$rcd_help" == *"$flag"* ]] || { ui_error "Rclone at $binary lacks required service option $flag."; return 1; }
+  done
+  global_help="$("$binary" --help 2>&1)" || { ui_error "Cannot inspect rclone global options in $binary."; return 1; }
+  [[ "$global_help" == *"--config"* ]] || { ui_error "Rclone at $binary lacks the required --config option."; return 1; }
+}
+
+mistborn_rclone_find_binary() {
+  command -v rclone
+}
+
+mistborn_rclone_prepare_service_binary() {
+  local binary="$1" upstream_binary="$2" version
+  version="$(mistborn_rclone_read_version "$binary")" || return 1
+  if ! mistborn_rclone_version_at_least "$version" "$mistborn_rclone_min_service_version"; then
+    if ! mistborn_rclone_version_at_least "$version" "1.55.0"; then
+      ui_error "rclone $version is too old for the verified self-update command (requires 1.55.0+). Refusing the official installer because it overwrites apt-managed /usr/bin/rclone; update through a trusted package that installs to /usr/local/bin/rclone, then retry."
+      return 1
+    fi
+    [[ -d "${upstream_binary%/*}" && ! -L "${upstream_binary%/*}" ]] || {
+      ui_error "Cannot safely use the stable upstream binary directory ${upstream_binary%/*}."; return 1;
+    }
+    [[ ! -L "$upstream_binary" ]] || { ui_error "Refusing symlinked upstream rclone target $upstream_binary."; return 1; }
+    [[ ! -e "$upstream_binary" || -f "$upstream_binary" ]] || { ui_error "Refusing non-file upstream rclone target $upstream_binary."; return 1; }
+
+    ui_warn "Rclone $version is below $mistborn_rclone_min_service_version, required for the optional authenticated Unix-socket service."
+    ui_info "The official verified stable updater will install to $upstream_binary, leaving apt-managed /usr/bin/rclone untouched. Future apt upgrades will not replace this service binary."
+    ui_confirm "Install the upstream stable rclone binary at $upstream_binary?" || {
+      ui_error "Rclone service setup requires explicit approval to install the upstream binary."; return 1;
+    }
+    mistborn_run "$binary" selfupdate --stable --output "$upstream_binary" || {
+      ui_error "The verified upstream rclone self-update failed."; return 1;
+    }
+    hash -r
+    binary="$upstream_binary"
+    version="$(mistborn_rclone_read_version "$binary")" || return 1
+    mistborn_rclone_version_at_least "$version" "$mistborn_rclone_min_service_version" || {
+      ui_error "Upstream rclone update left version $version installed; $mistborn_rclone_min_service_version or newer is required."; return 1;
+    }
+  fi
+
+  mistborn_rclone_verify_service_capability "$binary" || return 1
+  local selected_path
+  selected_path="$(mistborn_rclone_find_binary)" || { ui_error "rclone is not on PATH after capability verification."; return 1; }
+  [[ "$selected_path" == "$binary" ]] || {
+    ui_error "PATH selects $selected_path instead of the verified service binary $binary. Put /usr/local/bin before /usr/bin and retry."; return 1;
+  }
+}
+
+module_rclone_apply() {
+  local user home
+  user="$(mistborn_target_user)"
+  home="$(mistborn_user_home "$user")"
+  [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
+  ui_step "$module_rclone_description"
+  if mistborn_task_selected package; then
+    mistborn_task_start package
+    mistborn_apt_install rclone
+    if [[ "${MISTBORN_RCLONE_SERVICE:-0}" == 1 ]]; then
+      if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
+        ui_info "Would verify rclone $mistborn_rclone_min_service_version+ and, if needed, request approval before installing the verified stable binary at /usr/local/bin/rclone"
+      else
+        local rclone_binary
+        rclone_binary="$(mistborn_rclone_find_binary)" || { ui_error "rclone is not installed after apt completed."; return 1; }
+        mistborn_rclone_prepare_service_binary "$rclone_binary" /usr/local/bin/rclone || return 1
+      fi
+    fi
+    mistborn_task_complete package
+  fi
+  if mistborn_task_selected configuration && [[ "${MISTBORN_RCLONE_SERVICE:-0}" == 1 ]]; then
+    mistborn_task_skip configuration
+  elif mistborn_task_selected configuration && [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
+    mistborn_task_start configuration
+    if [[ "$user" == root ]]; then
+      mistborn_run_interactive env HOME="$home" rclone config
+    else
+      mistborn_run_interactive runuser -u "$user" -- env HOME="$home" rclone config
+    fi
+    mistborn_task_complete configuration
+  elif mistborn_task_selected configuration; then
+    mistborn_task_skip configuration
+  fi
+  ui_success "$module_rclone_description"
+}
+# shellcheck shell=bash
+
+module_rclone_service_description="rclone authenticated Unix-socket RC service"
+
+mistborn_rclone_no_symlink_ancestors() {
+  local path="$1" current=/ component
+  local -a parts
+  IFS=/ read -r -a parts <<<"${path#/}"
+  for component in "${parts[@]}"; do
+    [[ -n "$component" ]] || continue
+    current="${current%/}/$component"
+    [[ ! -L "$current" ]] || { ui_error "Refusing symlink in managed path: $current"; return 1; }
+  done
+}
+
+mistborn_rclone_check_owned_file() {
+  local path="$1" owner="$2" marker="$3" mode
+  [[ ! -e "$path" && ! -L "$path" ]] && return 0
+  [[ -f "$path" && ! -L "$path" ]] || { ui_error "Refusing non-regular or symlinked managed path: $path"; return 1; }
+  [[ "$(stat -c '%u' "$path" 2>/dev/null || stat -f '%u' "$path")" == "$owner" ]] || {
+    ui_error "Refusing to overwrite a file not owned by uid $owner: $path"; return 1;
+  }
+  grep -Fq "$marker" "$path" || { ui_error "Refusing to overwrite an unowned file at $path."; return 1; }
+  if [[ "$path" == */etc/rclone/rc.env ]]; then
+    mode="$(stat -c '%a' "$path" 2>/dev/null || stat -f '%Lp' "$path")"
+    [[ "$mode" == 600 ]] || { ui_error "Refusing credential file with unsafe permissions: $path"; return 1; }
+  fi
+}
+
+mistborn_rclone_check_service_account() {
+  local account uid home shell groups expected_home="${MISTBORN_RCLONE_ROOT:-}/var/lib/mistborn-rclone"
+  if ! account="$(getent passwd mistborn-rclone 2>/dev/null)"; then return 0; fi
+  IFS=: read -r _ _ uid _ _ home shell <<<"$account"
+  [[ "$uid" =~ ^[0-9]+$ ]] && ((uid > 0 && uid < 1000)) \
+    && [[ "$home" == "$expected_home" && "$shell" == */nologin ]] || {
+    ui_error "Existing mistborn-rclone account is not a non-root system account with the expected home and nologin shell."; return 1;
+  }
+  groups="$(id -nG mistborn-rclone 2>/dev/null)" || { ui_error "Cannot inspect mistborn-rclone groups."; return 1; }
+  [[ "$groups" == mistborn-rclone ]] || {
+    ui_error "Existing mistborn-rclone account has supplementary groups; only its dedicated primary group is allowed."; return 1;
+  }
+  mistborn_rclone_no_symlink_ancestors "$home" || return 1
+  if [[ -e "$home" ]]; then
+    [[ -d "$home" && "$(stat -c '%u' "$home" 2>/dev/null || stat -f '%u' "$home")" == "$uid" ]] || {
+      ui_error "Existing mistborn-rclone home is not a directory owned by the service account."; return 1;
+    }
+  fi
+}
+
+mistborn_rclone_service_preflight() {
+  local help path
+  command -v systemctl >/dev/null 2>&1 || { ui_error "systemd is required for the rclone service."; return 1; }
+  command -v runuser >/dev/null 2>&1 || { ui_error "runuser is required to configure rclone as its dedicated account."; return 1; }
+  command -v curl >/dev/null 2>&1 || { ui_error "curl is required to verify RC authentication over the Unix socket."; return 1; }
+  command -v rclone >/dev/null 2>&1 || { ui_error "rclone is not installed."; return 1; }
+  help="$(rclone rcd --help 2>&1)" || { ui_error "Installed rclone does not provide the rcd command."; return 1; }
+  [[ "$help" == *"--rc-addr"* && "$help" == *"--rc-user"* && "$help" == *"--rc-pass"* ]] || {
+    ui_error "Installed rclone rcd lacks Unix socket and RC authentication flags."; return 1;
+  }
+  help="$(rclone --help 2>&1)" || { ui_error "Cannot inspect rclone global options."; return 1; }
+  [[ "$help" == *"--config"* ]] || { ui_error "Installed rclone lacks --config support."; return 1; }
+  mistborn_rclone_check_service_account
+  local home="${MISTBORN_RCLONE_ROOT:-}/var/lib/mistborn-rclone"
+  local config="$home/.config/rclone/rclone.conf" env_path="${MISTBORN_RCLONE_ROOT:-}/etc/rclone/rc.env"
+  local unit_path="${MISTBORN_RCLONE_ROOT:-}/etc/systemd/system/mistborn-rclone.service"
+  for path in "$home" "$home/.config" "$home/.config/rclone" "$config" "${MISTBORN_RCLONE_ROOT:-}/etc/rclone" "$env_path" "$unit_path"; do
+    mistborn_rclone_no_symlink_ancestors "$path" || return 1
+  done
+  local env_dir="${MISTBORN_RCLONE_ROOT:-}/etc/rclone"
+  if [[ -e "$env_dir" ]]; then
+    [[ -d "$env_dir" && "$(stat -c '%u' "$env_dir" 2>/dev/null || stat -f '%u' "$env_dir")" == 0 ]] || {
+      ui_error "Refusing non-directory or non-root-owned rclone credential directory: $env_dir"; return 1;
+    }
+  fi
+  local service_uid=0
+  if id mistborn-rclone >/dev/null 2>&1; then service_uid="$(id -u mistborn-rclone)"; fi
+  if [[ "$service_uid" == 0 && ( -e "$config" || -L "$config" ) ]]; then
+    ui_error "Rclone service config exists without its dedicated account; refusing to take ownership."; return 1
+  fi
+  mistborn_rclone_check_owned_file "$env_path" 0 '# Managed by Mistborn Bootstrap: rclone RC credentials.' || return 1
+  mistborn_rclone_check_owned_file "$unit_path" 0 '# Managed by Mistborn Bootstrap: rclone service.' || return 1
+  if [[ -e "$config" || -L "$config" ]]; then
+    [[ -f "$config" && ! -L "$config" && "$(stat -c '%u' "$config" 2>/dev/null || stat -f '%u' "$config")" == "$service_uid" ]] || {
+      ui_error "Refusing unowned or unsafe rclone service config at $config."; return 1;
+    }
+    [[ "$(stat -c '%a' "$config" 2>/dev/null || stat -f '%Lp' "$config")" == 600 ]] || {
+      ui_error "Rclone service config must be mode 0600."; return 1;
+    }
+  fi
+  if [[ "$service_uid" != 0 ]]; then
+    for path in "$home/.config" "$home/.config/rclone"; do
+      if [[ -e "$path" ]]; then
+        [[ -d "$path" && ! -L "$path" && "$(stat -c '%u' "$path" 2>/dev/null || stat -f '%u' "$path")" == "$service_uid" ]] || {
+          ui_error "Refusing rclone service directory not owned by mistborn-rclone: $path"; return 1;
+        }
+      fi
+    done
+  fi
+}
+
+mistborn_rclone_service_credentials() {
+  local username password confirmation
+  [[ -r /dev/tty && -w /dev/tty ]] || { ui_error "Rclone service credentials must be entered interactively on a terminal."; return 1; }
+  IFS= read -r -p "rclone RC username (letters, numbers, dot, underscore, hyphen): " username </dev/tty
+  [[ "$username" =~ ^[A-Za-z0-9_.-]{3,64}$ ]] || { ui_error "Username must be 3-64 safe characters."; return 1; }
+  IFS= read -r -s -p "rclone RC password (at least 32 letters, numbers, underscore, hyphen, or dot): " password </dev/tty
+  printf '\n' >/dev/tty
+  IFS= read -r -s -p "Repeat rclone RC password: " confirmation </dev/tty
+  printf '\n' >/dev/tty
+  mistborn_rclone_credentials_valid "$username" "$password" || { unset password confirmation; ui_error "Password must be 32-128 safe characters."; return 1; }
+  [[ "$password" == "$confirmation" ]] || { unset password confirmation; ui_error "Passwords did not match."; return 1; }
+  MISTBORN_RCLONE_SERVICE_USER="$username"
+  MISTBORN_RCLONE_SERVICE_PASS="$password"
+  unset confirmation
+}
+
+mistborn_rclone_credentials_valid() {
+  [[ "$1" =~ ^[A-Za-z0-9_.-]{3,64}$ && "$2" =~ ^[A-Za-z0-9_.-]{32,128}$ ]]
+}
+
+MISTBORN_RCLONE_TX_ACTIVE=0
+MISTBORN_RCLONE_TX_CONFIG_BACKUP=''
+MISTBORN_RCLONE_TX_ENV_BACKUP=''
+MISTBORN_RCLONE_TX_UNIT_BACKUP=''
+MISTBORN_RCLONE_TX_CONFIG_EXISTED=0
+MISTBORN_RCLONE_TX_ENV_EXISTED=0
+MISTBORN_RCLONE_TX_UNIT_EXISTED=0
+MISTBORN_RCLONE_TX_STAGE_CONFIG=''
+MISTBORN_RCLONE_TX_STAGE_ENV=''
+MISTBORN_RCLONE_TX_STAGE_UNIT=''
+
+mistborn_rclone_snapshot_file() {
+  local path="$1" key="$2" backup
+  local backup_var="MISTBORN_RCLONE_TX_${key}_BACKUP" existed_var="MISTBORN_RCLONE_TX_${key}_EXISTED"
+  if [[ -e "$path" ]]; then
+    backup="$(mktemp "${path}.mistborn-backup.XXXXXX")" || return 1
+    cp -p "$path" "$backup" || return 1
+    printf -v "$backup_var" '%s' "$backup"
+    printf -v "$existed_var" 1
+  else
+    printf -v "$backup_var" ''
+    printf -v "$existed_var" 0
+  fi
+}
+
+mistborn_rclone_restore_one() {
+  local key="$1" path="$2" backup="" existed=0
+  case "$key" in
+    CONFIG) backup="$MISTBORN_RCLONE_TX_CONFIG_BACKUP"; existed="$MISTBORN_RCLONE_TX_CONFIG_EXISTED" ;;
+    ENV) backup="$MISTBORN_RCLONE_TX_ENV_BACKUP"; existed="$MISTBORN_RCLONE_TX_ENV_EXISTED" ;;
+    UNIT) backup="$MISTBORN_RCLONE_TX_UNIT_BACKUP"; existed="$MISTBORN_RCLONE_TX_UNIT_EXISTED" ;;
+  esac
+  if [[ "$existed" == 1 ]]; then mv -f "$backup" "$path"; else rm -f -- "$path"; fi
+}
+
+mistborn_rclone_transaction_cleanup() {
+  local original_status=$?
+  trap - EXIT INT TERM HUP
+  set +e
+  if [[ "$MISTBORN_RCLONE_TX_ACTIVE" == 1 ]]; then
+    systemctl stop mistborn-rclone.service >/dev/null 2>&1
+    mistborn_rclone_restore_one CONFIG "$MISTBORN_RCLONE_TX_CONFIG_PATH"
+    mistborn_rclone_restore_one ENV "$MISTBORN_RCLONE_TX_ENV_PATH"
+    mistborn_rclone_restore_one UNIT "$MISTBORN_RCLONE_TX_UNIT_PATH"
+    systemctl daemon-reload >/dev/null 2>&1
+    if [[ "$MISTBORN_RCLONE_TX_WAS_ACTIVE" == 1 ]]; then
+      systemctl restart mistborn-rclone.service >/dev/null 2>&1 || systemctl start mistborn-rclone.service >/dev/null 2>&1
+      systemctl is-active --quiet mistborn-rclone.service || ui_warn "Could not restore the previously active rclone service; inspect systemctl status mistborn-rclone."
+    elif [[ "$MISTBORN_RCLONE_TX_WAS_ENABLED" == 1 ]]; then
+      systemctl enable mistborn-rclone.service >/dev/null 2>&1
+      systemctl is-active --quiet mistborn-rclone.service && systemctl stop mistborn-rclone.service >/dev/null 2>&1
+    else
+      systemctl disable --now mistborn-rclone.service >/dev/null 2>&1
+    fi
+    MISTBORN_RCLONE_TX_ACTIVE=0
+  fi
+  rm -f -- "$MISTBORN_RCLONE_TX_STAGE_CONFIG" "$MISTBORN_RCLONE_TX_STAGE_ENV" "$MISTBORN_RCLONE_TX_STAGE_UNIT" \
+    "$MISTBORN_RCLONE_TX_CONFIG_BACKUP" "$MISTBORN_RCLONE_TX_ENV_BACKUP" "$MISTBORN_RCLONE_TX_UNIT_BACKUP"
+  unset MISTBORN_RCLONE_SERVICE_PASS
+  return "$original_status"
+}
+
+mistborn_rclone_transaction_signal() {
+  local status="$1"
+  mistborn_rclone_transaction_cleanup
+  exit "$status"
+}
+
+mistborn_rclone_verify_socket_auth() {
+  local socket="$1" status attempt
+  for ((attempt=0; attempt<20; attempt++)); do
+    if status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --max-time 3 --noproxy '*' --unix-socket "$socket" --request POST http://localhost/rc/noop 2>/dev/null)"; then
+      [[ "$status" == 401 ]] && return 0
+      ui_error "rclone RC socket returned HTTP $status without credentials; expected HTTP 401."
+      return 1
+    fi
+    sleep 0.1
+  done
+  ui_error "Could not verify authentication on the rclone RC socket: $socket"
+  return 1
+}
+
+mistborn_rclone_commit_staged_files() {
+  local staged_config="$1" staged_env="$2" staged_unit="$3"
+  local config_path="$4" env_path="$5" unit_path="$6" was_active="$7" was_enabled="$8"
+  local verify_socket="${9:-}"
+  MISTBORN_RCLONE_TX_CONFIG_PATH="$config_path"
+  MISTBORN_RCLONE_TX_ENV_PATH="$env_path"
+  MISTBORN_RCLONE_TX_UNIT_PATH="$unit_path"
+  MISTBORN_RCLONE_TX_WAS_ACTIVE="$was_active"
+  MISTBORN_RCLONE_TX_WAS_ENABLED="$was_enabled"
+  MISTBORN_RCLONE_TX_STAGE_CONFIG="$staged_config"
+  MISTBORN_RCLONE_TX_STAGE_ENV="$staged_env"
+  MISTBORN_RCLONE_TX_STAGE_UNIT="$staged_unit"
+  trap 'mistborn_rclone_transaction_cleanup' EXIT
+  trap 'mistborn_rclone_transaction_signal 130' INT
+  trap 'mistborn_rclone_transaction_signal 143' TERM
+  trap 'mistborn_rclone_transaction_signal 129' HUP
+  mistborn_rclone_snapshot_file "$config_path" CONFIG || return 1
+  mistborn_rclone_snapshot_file "$env_path" ENV || return 1
+  mistborn_rclone_snapshot_file "$unit_path" UNIT || return 1
+  MISTBORN_RCLONE_TX_ACTIVE=1
+  mv -f "$staged_config" "$config_path" || { mistborn_rclone_transaction_cleanup; return 1; }
+  mv -f "$staged_env" "$env_path" || { mistborn_rclone_transaction_cleanup; return 1; }
+  mv -f "$staged_unit" "$unit_path" || { mistborn_rclone_transaction_cleanup; return 1; }
+  systemctl daemon-reload || { mistborn_rclone_transaction_cleanup; return 1; }
+  if [[ "$was_active" == 1 ]]; then
+    systemctl restart mistborn-rclone.service || { mistborn_rclone_transaction_cleanup; return 1; }
+  else
+    systemctl enable --now mistborn-rclone.service || { mistborn_rclone_transaction_cleanup; return 1; }
+  fi
+  systemctl is-active --quiet mistborn-rclone.service || { mistborn_rclone_transaction_cleanup; return 1; }
+  if [[ -n "$verify_socket" ]]; then
+    local attempt socket_ready=0
+    for ((attempt=0; attempt<50; attempt++)); do
+      if [[ -S "$verify_socket" ]]; then socket_ready=1; break; fi
+      sleep 0.1
+    done
+    [[ "$socket_ready" == 1 ]] || { ui_error "rclone service is active but its Unix socket did not appear within 5 seconds: $verify_socket"; mistborn_rclone_transaction_cleanup; return 1; }
+    mistborn_rclone_verify_socket_auth "$verify_socket" || { mistborn_rclone_transaction_cleanup; return 1; }
+  fi
+  MISTBORN_RCLONE_TX_ACTIVE=0
+  rm -f -- "$MISTBORN_RCLONE_TX_CONFIG_BACKUP" "$MISTBORN_RCLONE_TX_ENV_BACKUP" "$MISTBORN_RCLONE_TX_UNIT_BACKUP"
+  MISTBORN_RCLONE_TX_CONFIG_BACKUP=''; MISTBORN_RCLONE_TX_ENV_BACKUP=''; MISTBORN_RCLONE_TX_UNIT_BACKUP=''
+  MISTBORN_RCLONE_TX_STAGE_CONFIG=''; MISTBORN_RCLONE_TX_STAGE_ENV=''; MISTBORN_RCLONE_TX_STAGE_UNIT=''
+  trap - EXIT INT TERM HUP
+}
+
+module_rclone_service_apply() {
+  local root="${MISTBORN_RCLONE_ROOT:-}"
+  local home="$root/var/lib/mistborn-rclone" config_dir="$root/var/lib/mistborn-rclone/.config/rclone"
+  local config_file="$config_dir/rclone.conf" env_file="$root/etc/rclone/rc.env" unit="$root/etc/systemd/system/mistborn-rclone.service"
+  [[ "${MISTBORN_RCLONE_SERVICE:-0}" == 1 ]] || { mistborn_task_skip service; return 0; }
+  ui_step "$module_rclone_service_description"
+  mistborn_require_root
+  if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
+    ui_info "Would verify rclone rcd Unix-socket and authentication support"
+    ui_info "Would create the unprivileged mistborn-rclone account and configure its private remotes"
+    ui_info "Would write root-only RC credentials and install a service using /run/rclone/rc.sock"
+    ui_info "No TCP listener or firewall rule would be created"
+    mistborn_task_complete service
+    return 0
+  fi
+  mistborn_rclone_service_preflight
+  ui_warn "This starts the authenticated rclone RC API on a Unix socket. RC access is equivalent to shell access as the service user."
+  ui_info "Rclone will run as mistborn-rclone and use $config_file. No mount will be created in a container."
+  ui_confirm "Continue with the rclone Unix-socket service setup?" || { ui_error "Rclone service setup requires explicit confirmation."; return 1; }
+  local rclone_binary
+  rclone_binary="$(command -v rclone)"
+  mistborn_rclone_prepare_service_binary "$rclone_binary" /usr/local/bin/rclone || return 1
+  mistborn_rclone_service_credentials
+  mistborn_task_start service
+  trap 'mistborn_rclone_transaction_cleanup' EXIT
+  trap 'mistborn_rclone_transaction_signal 130' INT
+  trap 'mistborn_rclone_transaction_signal 143' TERM
+  trap 'mistborn_rclone_transaction_signal 129' HUP
+  local was_active=0
+  local was_enabled=0
+  systemctl is-active --quiet mistborn-rclone.service && was_active=1 || true
+  systemctl is-enabled --quiet mistborn-rclone.service && was_enabled=1 || true
+  if ! id mistborn-rclone >/dev/null 2>&1; then
+    useradd --system --user-group --home-dir "$home" --create-home --shell /usr/sbin/nologin mistborn-rclone
+  else
+    local account
+    account="$(getent passwd mistborn-rclone)" || { ui_error "Cannot inspect existing mistborn-rclone account."; return 1; }
+    [[ "$(cut -d: -f3 <<<"$account")" -gt 0 && "$(cut -d: -f6 <<<"$account")" == "$home" ]] || {
+      ui_error "Existing mistborn-rclone account does not match the expected unprivileged home."; return 1;
+    }
+  fi
+  mistborn_rclone_check_service_account
+  chmod 0700 "$home"
+  install -d -o mistborn-rclone -g mistborn-rclone -m 0700 "$config_dir"
+  local staged_config staged_env staged_unit
+  staged_config="$(mktemp "$config_dir/.rclone.conf.mistborn.XXXXXX")"
+  MISTBORN_RCLONE_TX_STAGE_CONFIG="$staged_config"
+  chown mistborn-rclone:mistborn-rclone "$staged_config"
+  chmod 0600 "$staged_config"
+  if [[ -f "$config_file" ]]; then cp -p "$config_file" "$staged_config"; chown mistborn-rclone:mistborn-rclone "$staged_config"; chmod 0600 "$staged_config"; fi
+  ui_info "Configure the remotes that this service account will expose to the Runtipi app."
+  mistborn_run_interactive runuser -u mistborn-rclone -- env HOME="$home" rclone --config "$staged_config" config
+  [[ -f "$staged_config" && ! -L "$staged_config" && "$(stat -c '%u' "$staged_config" 2>/dev/null || stat -f '%u' "$staged_config")" == "$(id -u mistborn-rclone)" ]] || {
+    ui_error "rclone config did not leave a regular service-account-owned staged file."; return 1;
+  }
+  chmod 0600 "$staged_config"
+
+  install -d -m 0755 "$root/etc/systemd/system"
+  if [[ ! -d "$root/etc/rclone" ]]; then install -d -o root -g root -m 0700 "$root/etc/rclone"; fi
+  staged_env="$(mktemp "$root/etc/rclone/.rc.env.XXXXXX")"
+  staged_unit="$(mktemp "$root/etc/systemd/system/.mistborn-rclone.service.XXXXXX")"
+  MISTBORN_RCLONE_TX_STAGE_ENV="$staged_env"
+  MISTBORN_RCLONE_TX_STAGE_UNIT="$staged_unit"
+  chmod 0600 "$staged_env"
+  printf '# Managed by Mistborn Bootstrap: rclone RC credentials.\nRCLONE_RC_USER=%s\nRCLONE_RC_PASS=%s\n' "$MISTBORN_RCLONE_SERVICE_USER" "$MISTBORN_RCLONE_SERVICE_PASS" >"$staged_env"
+  chown root:root "$staged_env"
+  local rclone_bin
+  rclone_bin="$(command -v rclone)"
+  [[ "$rclone_bin" == /* && "$rclone_bin" != *[[:space:]]* ]] || { ui_error "rclone executable path cannot be represented safely in the systemd unit."; return 1; }
+  cat >"$staged_unit" <<UNIT
+# Managed by Mistborn Bootstrap: rclone service.
+[Unit]
+Description=Mistborn host rclone RC API (Unix socket)
+Before=docker.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mistborn-rclone
+Group=mistborn-rclone
+EnvironmentFile=$env_file
+RuntimeDirectory=rclone
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+UMask=0007
+ExecStart=$rclone_bin --config=$config_file rcd --rc-addr=/run/rclone/rc.sock
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadWritePaths=$home
+ReadWritePaths=/run/rclone
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  chown root:root "$staged_unit"
+  chmod 0644 "$staged_unit"
+
+  # Leave an existing daemon untouched until the interactive config and all replacement files are ready.
+  mistborn_rclone_commit_staged_files "$staged_config" "$staged_env" "$staged_unit" "$config_file" "$env_file" "$unit" "$was_active" "$was_enabled" /run/rclone/rc.sock || {
+    ui_error "rclone service update failed; previous files and service state were restored where possible."; return 1;
+  }
+  unset MISTBORN_RCLONE_SERVICE_PASS
+  ui_success "Authenticated rclone RC socket: /run/rclone/rc.sock"
+  ui_info "The socket is available to group members via mode 0750 directory and umask 0007; no TCP listeners were configured."
+  mistborn_task_complete service
+}
+# shellcheck shell=bash
+
 module_runtipi_description="Runtipi"
 
 module_runtipi_apply() {
@@ -272,32 +752,6 @@ module_runtipi_apply() {
   fi
   mistborn_task_complete install
   ui_success "$module_runtipi_description"
-}
-# shellcheck shell=bash
-
-module_rclone_description="rclone"
-
-module_rclone_apply() {
-  local user home
-  user="$(mistborn_target_user)"
-  home="$(mistborn_user_home "$user")"
-  [[ -n "$home" ]] || { ui_error "Cannot resolve home directory for $user"; return 1; }
-  ui_step "$module_rclone_description"
-  if mistborn_task_selected package; then
-    mistborn_task_start package; mistborn_apt_install rclone; mistborn_task_complete package
-  fi
-  if mistborn_task_selected configuration && [[ "${MISTBORN_RCLONE_CONFIGURE:-0}" == 1 ]]; then
-    mistborn_task_start configuration
-    if [[ "$user" == root ]]; then
-      mistborn_run_interactive env HOME="$home" rclone config
-    else
-      mistborn_run_interactive runuser -u "$user" -- env HOME="$home" rclone config
-    fi
-    mistborn_task_complete configuration
-  elif mistborn_task_selected configuration; then
-    mistborn_task_skip configuration
-  fi
-  ui_success "$module_rclone_description"
 }
 # shellcheck shell=bash
 
@@ -539,7 +993,6 @@ module_toolset_apply() {
   if [[ "${MISTBORN_DRY_RUN:-0}" == 1 ]]; then
     ui_info "Would install /usr/local/bin/mistborn and its Ratatui runner"
   else
-    install -d -m 0755 /usr/local/lib/mistborn
     if mistborn_task_selected runner; then
     mistborn_task_start runner
     if [[ -n "${MISTBORN_RUNNER_BINARY:-}" && -x "$MISTBORN_RUNNER_BINARY" && "$MISTBORN_RUNNER_BINARY" != /usr/local/bin/mistborn-bootstrap ]]; then
@@ -551,26 +1004,12 @@ module_toolset_apply() {
     fi
     if mistborn_task_selected command; then
     mistborn_task_start command
-    install -d -m 0755 /usr/local/lib/mistborn/plans
-    local staging_dir
-    staging_dir="$(mktemp -d /usr/local/lib/mistborn/.install.XXXXXX)"
-    printf '%s' "$MISTBORN_TOOL_B64" | base64 -d >"$staging_dir/host.sh"
-    chmod 0644 "$staging_dir/host.sh"
-    printf '%s' "$MISTBORN_UPDATE_PLAN_B64" | base64 -d >"$staging_dir/update.toml"
-    chmod 0644 "$staging_dir/update.toml"
-    mv -f "$staging_dir/host.sh" /usr/local/lib/mistborn/host.sh
-    mv -f "$staging_dir/update.toml" /usr/local/lib/mistborn/plans/update.toml
-    rmdir "$staging_dir"
+    [[ -x /usr/local/bin/mistborn-bootstrap ]] || {
+      ui_error "Cannot install mistborn: Rust runner is missing"
+      return 1
+    }
     mistborn_publish_desired_config /etc/mistborn /usr/local/share/mistborn "${MISTBORN_RUNNER_BINARY:-/usr/local/bin/mistborn-bootstrap}"
-    cat >/usr/local/bin/mistborn <<'MISTBORN_LAUNCHER'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-if [[ -x /usr/local/bin/mistborn-bootstrap ]]; then
-  exec /usr/local/bin/mistborn-bootstrap host --script /usr/local/lib/mistborn/host.sh "$@"
-fi
-exec bash /usr/local/lib/mistborn/host.sh "$@"
-MISTBORN_LAUNCHER
-    chmod 0755 /usr/local/bin/mistborn
+    install -m 0755 /usr/local/bin/mistborn-bootstrap /usr/local/bin/mistborn
     mistborn_task_complete command
     fi
   fi
@@ -601,8 +1040,9 @@ main() {
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != docker ]] || module_docker_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != zsh ]] || module_zsh_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != tailscale ]] || module_tailscale_apply
-  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != runtipi ]] || module_runtipi_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != rclone ]] || module_rclone_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != rclone_service ]] || module_rclone_service_apply
+  [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != runtipi ]] || module_runtipi_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != security ]] || module_security_apply
   [[ -n "$MISTBORN_ONLY" && "$MISTBORN_ONLY" != toolset ]] || module_toolset_apply
   [[ -n "$MISTBORN_ONLY" ]] || ui_header "Setup complete"

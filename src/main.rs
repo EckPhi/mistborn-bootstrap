@@ -109,7 +109,7 @@ impl EventLog {
 }
 
 fn usage() -> &'static str {
-    "Usage: mistborn-bootstrap {run|apply|plan} COLLECTION [TARGET] [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       TARGET is STAGE or STAGE/TASK\n       mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]\n       mistborn-bootstrap validate-config PATH"
+    "Usage: mistborn-bootstrap {run|apply|plan} COLLECTION [TARGET] [--root PATH] [--state-dir PATH] [--log-dir PATH] [--dry-run] [--yes] [--user NAME]\n       TARGET is STAGE or STAGE/TASK\n       mistborn-bootstrap host [COMMAND [ARGS...]]\n       mistborn [COMMAND [ARGS...]]\n       mistborn-bootstrap validate-config PATH"
 }
 
 fn validate_config(arguments: &[String]) -> Result<(), String> {
@@ -711,7 +711,7 @@ fn execute(options: Options) -> Result<(), String> {
     log.emit(json!({"at": now(), "event": "run_completed", "run_id": run_token, "collection": options.collection}))
         .map_err(|error| error.to_string())?;
     let home_available =
-        options.collection == "server" && Path::new("/usr/local/lib/mistborn/host.sh").is_file();
+        options.collection == "server" && Path::new("/usr/local/bin/mistborn").is_file();
     let return_to_home = if let Some(dashboard) = &mut dashboard {
         dashboard.wait_for_exit(home_available)?
     } else {
@@ -724,53 +724,40 @@ fn execute(options: Options) -> Result<(), String> {
     println!("  state: {}", state_path.display());
     println!("  log:   {}", log_path.display());
     if return_to_home {
-        execute_host(&[
-            "host".to_owned(),
-            "--script".to_owned(),
-            "/usr/local/lib/mistborn/host.sh".to_owned(),
-        ])?;
+        execute_host(&["host".to_owned()])?;
     }
     Ok(())
 }
 
 fn execute_host(arguments: &[String]) -> Result<(), String> {
-    if arguments.len() < 3 || arguments[1] != "--script" {
-        return Err(format!(
-            "Usage: mistborn-bootstrap host --script PATH [COMMAND [ARGS...]]\n{}",
-            usage()
-        ));
-    }
-    let mut command_arguments = arguments[3..].to_vec();
+    let mut command_arguments = arguments[1..].to_vec();
     if command_arguments.first().is_some_and(|command| {
         matches!(command.as_str(), "status" | "doctor" | "plan" | "reconcile")
-    }) && !command_arguments.iter().any(|arg| arg == "--legacy")
-    {
+    }) {
         return execute_host_management_command(&command_arguments);
     }
-    if command_arguments.iter().any(|arg| arg == "--legacy") {
-        command_arguments.retain(|arg| arg != "--legacy");
+    if command_arguments
+        .first()
+        .is_some_and(|command| matches!(command.as_str(), "help" | "-h" | "--help"))
+    {
+        println!(
+            "Usage: mistborn [status|doctor|plan|reconcile] [OPTIONS]\n       mistborn doctor --fix [--safe]\n       mistborn reconcile [REMEDIATION] [--yes]"
+        );
+        return Ok(());
     }
-    let script = PathBuf::from(&arguments[2]);
-    if !script.is_file() {
+    if !command_arguments.is_empty() {
         return Err(format!(
-            "host command script not found: {}",
-            script.display()
+            "exit-code-2: unknown host command: {}",
+            command_arguments[0]
         ));
     }
     let use_dashboard = interactive_terminal();
-    let shows_menu = command_arguments.is_empty()
-        || command_arguments
-            .first()
-            .is_some_and(|command| matches!(command.as_str(), "help" | "-h" | "--help"));
     if use_dashboard {
-        let mut menu_open = shows_menu;
         loop {
-            if menu_open {
-                let Some(operation) = CommandDashboard::select_command()? else {
-                    return Ok(());
-                };
-                command_arguments = vec![operation.to_owned()];
-            }
+            let Some(operation) = CommandDashboard::select_command()? else {
+                return Ok(());
+            };
+            command_arguments = vec![operation.to_owned()];
             let operation = command_arguments
                 .first()
                 .map_or("help", |argument| argument.as_str());
@@ -779,14 +766,13 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
                 .collect::<Vec<_>>()
                 .join(" ");
             let mut dashboard = CommandDashboard::new(operation, &command)?;
-            let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
-            File::create(&progress_path).map_err(|error| error.to_string())?;
-            let (succeeded, code) = dashboard.run(&script, &command_arguments, &progress_path)?;
+            let (succeeded, code) = dashboard.run(
+                &env::current_exe().map_err(|error| error.to_string())?,
+                &command_arguments,
+            )?;
             let return_to_home = dashboard.wait_for_exit()?;
             drop(dashboard);
-            let _ = fs::remove_file(&progress_path);
             if return_to_home {
-                menu_open = true;
                 continue;
             }
             return if succeeded {
@@ -799,34 +785,8 @@ fn execute_host(arguments: &[String]) -> Result<(), String> {
             };
         }
     } else {
-        let command_arguments = command_arguments.as_slice();
-        let operation = command_arguments
-            .first()
-            .map_or("help", |argument| argument.as_str());
-        let progress_path = env::temp_dir().join(format!("mistborn-progress-{}", run_id()));
-        File::create(&progress_path).map_err(|error| error.to_string())?;
-        let status = Command::new("bash")
-            .arg(&script)
-            .args(command_arguments)
-            .env("MISTBORN_PROGRESS_FILE", &progress_path)
-            .env("MISTBORN_PROGRESS_STAGE", "bootstrap")
-            .env(
-                "MISTBORN_BOOTSTRAP_VERSION",
-                format!("v{}", env!("CARGO_PKG_VERSION")),
-            )
-            .status()
-            .map_err(|error| format!("failed to start mistborn {operation}: {error}"))?;
-        let _ = fs::remove_file(progress_path);
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!(
-                "mistborn {operation} failed with exit code {}",
-                status
-                    .code()
-                    .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
-            ))
-        }
+        println!("Usage: mistborn [status|doctor|plan|reconcile] [OPTIONS]");
+        Ok(())
     }
 }
 
@@ -867,11 +827,6 @@ fn execute_host_management_command(arguments: &[String]) -> Result<(), String> {
             "--yes" if command == "reconcile" || (command == "doctor" && fix) => {
                 explicit_yes = true;
                 index += 1;
-            }
-            "--legacy" => {
-                return Err(inspection_cli_error(
-                    "internal error: legacy command was routed to Rust",
-                ));
             }
             value
                 if !value.starts_with('-')
@@ -1910,8 +1865,19 @@ fn confirmation_note(diagnostic: &mistborn_bootstrap::domain::Diagnostic) -> Opt
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = env::args().collect();
+    let program = if arguments.first().is_some_and(|argument| {
+        Path::new(argument)
+            .file_name()
+            .is_some_and(|name| name == "mistborn")
+    }) {
+        "mistborn"
+    } else {
+        "mistborn-bootstrap"
+    };
     let result = if arguments.get(1).is_some_and(|argument| argument == "host") {
         execute_host(&arguments[1..])
+    } else if program == "mistborn" {
+        execute_host(&arguments)
     } else if arguments
         .get(1)
         .is_some_and(|argument| argument == "validate-config")
@@ -1924,10 +1890,10 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             if let Some(message) = error.strip_prefix("exit-code-2: ") {
-                eprintln!("mistborn-bootstrap: {message}");
+                eprintln!("{program}: {message}");
                 ExitCode::from(2)
             } else {
-                eprintln!("mistborn-bootstrap: {error}");
+                eprintln!("{program}: {error}");
                 ExitCode::FAILURE
             }
         }
@@ -2006,26 +1972,21 @@ mod tests {
     }
 
     #[test]
-    fn status_routes_to_rust_before_legacy_script_lookup() {
+    fn status_routes_to_rust_without_script() {
         let error = execute_host(&[
             "host".to_owned(),
-            "--script".to_owned(),
-            "/missing/legacy/script".to_owned(),
             "status".to_owned(),
             "--format".to_owned(),
             "yaml".to_owned(),
         ])
         .unwrap_err();
         assert!(error.contains("exit-code-2: unsupported output format"));
-        assert!(!error.contains("host command script not found"));
     }
 
     #[test]
     fn read_only_cli_argument_errors_use_exit_code_two() {
         let error = execute_host(&[
             "host".to_owned(),
-            "--script".to_owned(),
-            "/missing/legacy/script".to_owned(),
             "doctor".to_owned(),
             "--unknown".to_owned(),
         ])
@@ -2034,32 +1995,26 @@ mod tests {
     }
 
     #[test]
-    fn plan_routes_to_rust_before_legacy_script_lookup() {
+    fn plan_routes_to_rust_without_script() {
         let error = execute_host(&[
             "host".to_owned(),
-            "--script".to_owned(),
-            "/missing/legacy/script".to_owned(),
             "plan".to_owned(),
             "--format".to_owned(),
             "yaml".to_owned(),
         ])
         .unwrap_err();
         assert!(error.starts_with("exit-code-2: unsupported output format"));
-        assert!(!error.contains("host command script not found"));
     }
 
     #[test]
     fn reconcile_rejects_unknown_options_before_host_mutation() {
         let error = execute_host(&[
             "host".to_owned(),
-            "--script".to_owned(),
-            "/missing/legacy/script".to_owned(),
             "reconcile".to_owned(),
             "--unexpected".to_owned(),
         ])
         .unwrap_err();
         assert!(error.starts_with("exit-code-2: unknown reconcile option"));
-        assert!(!error.contains("host command script not found"));
     }
 
     #[test]
@@ -2078,19 +2033,29 @@ mod tests {
             ],
         ] {
             let error = execute_host(
-                &[
-                    "host".to_owned(),
-                    "--script".to_owned(),
-                    "/missing/legacy/script".to_owned(),
-                ]
-                .into_iter()
-                .chain(arguments)
-                .collect::<Vec<_>>(),
+                &["host".to_owned()]
+                    .into_iter()
+                    .chain(arguments)
+                    .collect::<Vec<_>>(),
             )
             .unwrap_err();
             assert!(error.contains("--format json is not supported for mutating commands"));
-            assert!(!error.contains("host command script not found"));
         }
+    }
+
+    #[test]
+    fn legacy_host_entrypoints_are_rejected() {
+        for command in ["--script", "fix", "upgrade", "rclone-config"] {
+            let error = execute_host(&["host".to_owned(), command.to_owned()]).unwrap_err();
+            assert!(error.starts_with("exit-code-2: unknown host command"));
+        }
+        let error = execute_host(&[
+            "host".to_owned(),
+            "status".to_owned(),
+            "--legacy".to_owned(),
+        ])
+        .unwrap_err();
+        assert!(error.starts_with("exit-code-2: unknown status option: --legacy"));
     }
 
     #[test]

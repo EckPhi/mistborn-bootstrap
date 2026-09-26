@@ -18,10 +18,9 @@ assembling host commands independently.
 - Use `mistborn status` for installation versions, recorded state, services,
   and effective configuration. It verifies required managed firewall rules
   without rejecting unrelated administrator rules. Use `mistborn doctor` for
-  the shorter dependency/health audit and `mistborn security-status` for raw
-  SSH, UFW, fail2ban, and Tailscale output.
-- Use `mistborn upgrade` for the installed host tool and
-  `mistborn update-runtipi` for Runtipi core, stores, and apps.
+  the dependency/health audit and `mistborn plan` for host drift.
+- Re-run the release installer to refresh the installed host tool. Use
+  Runtipi's own CLI for core, stores, and apps.
 
 ## Installation
 

@@ -77,8 +77,7 @@ use `--state-dir` and `--log-dir` to select writable temporary directories.
 Stage order and dashboard text are defined in `plans/*.toml`; each plan lists
 weighted task IDs and their Bash action names. Bash modules still own the
 system changes and emit task lifecycle events, so the runner can show and log
-substage progress without parsing command output. `plans/update.toml` describes
-the local `mistborn upgrade` flow. The `.modules` files remain the bundle's
+substage progress without parsing command output. The `.modules` files remain the bundle's
 source-file list, and the runner checks that their order matches the TOML plan.
 
 Each task may declare a `revision`, the environment-variable names that affect
@@ -100,22 +99,61 @@ Both dashboards remain visible at completion until a key is pressed.
 
 ## Host management
 
-The server collection installs `/usr/local/bin/mistborn` with the operational
-features formerly owned by the standalone Runtipi Companion CLI:
+The server collection installs `/usr/local/bin/mistborn` as the native Rust
+host-management app:
 
 ```bash
 sudo mistborn doctor
 sudo mistborn status
-sudo mistborn fix
-sudo mistborn upgrade
-sudo mistborn update-runtipi
-sudo mistborn security-status
-sudo mistborn tailscale-status
-sudo mistborn rclone-config
-sudo mistborn update-apps
-sudo mistborn update-core latest
-sudo mistborn update-appstores
+mistborn plan
+sudo mistborn reconcile security/plex-firewall
+sudo mistborn doctor --fix --safe
 ```
+
+### Optional host rclone RC socket service
+
+Set `MISTBORN_RCLONE_SERVICE=1` for the server installer, or select its service
+option in the installer generator. Mistborn installs rclone, prompts for the RC
+username and password, and configures remotes for the dedicated unprivileged
+`mistborn-rclone` account at
+`/var/lib/mistborn-rclone/.config/rclone/rclone.conf`. The service starts before
+Runtipi is installed, so the socket directory exists when the app is started.
+The existing `MISTBORN_RCLONE_CONFIGURE=1` workflow for the target user's own
+remotes remains separate. Service mode requires rclone 1.69.0 or newer so RC
+authentication is enforced over the Unix socket.
+If the distribution package is too old but supports `rclone selfupdate`,
+Mistborn asks before installing the verified upstream binary at
+`/usr/local/bin/rclone`. Older packages need a manual rclone upgrade first.
+
+The systemd service runs `rclone rcd` on `/run/rclone/rc.sock` with RC
+authentication. `RuntimeDirectory=rclone` creates the directory at service
+start with mode 0750; `UMask=0007` restricts the socket. Mistborn stores
+`RCLONE_RC_USER` and `RCLONE_RC_PASS` in `/etc/rclone/rc.env` with root-only
+0600 permissions. Credentials are entered on the terminal and are absent from
+installer URLs, process arguments, and command output. No host TCP port or UFW
+rule is needed for this service. The app publishes only its web proxy on 5572.
+
+The Runtipi app's proxy container must bind-mount `/run/rclone` read-only and
+forward browser `/api/` requests to `/run/rclone/rc.sock` using the prompted
+credentials. Mount the socket directory only into that proxy container, which
+connects as root. With Docker user-namespace remapping, grant the remapped
+container root access to the host directory and socket through appropriate
+ownership and permissions. Sign in to the web UI with the same RC username and
+password. The app's separate loopback RC listener is not the host API and
+must not be published. The host RC API can run commands and access files as
+`mistborn-rclone`, so use a strong password and trusted remotes.
+
+To edit the managed service account's remotes, run
+`sudo runuser -u mistborn-rclone -- env HOME=/var/lib/mistborn-rclone rclone --config /var/lib/mistborn-rclone/.config/rclone/rclone.conf config`.
+To rotate the login or reconfigure the service,
+reapply the confirmed `rclone_service/service` task with
+`MISTBORN_RCLONE_SERVICE=1`; it prompts for credentials and restarts the unit.
+
+This setup does not mount cloud files inside the Runtipi app/container. If you
+later choose to mount a remote on the host, do so separately with a host
+systemd mount service and an intentional host destination such as
+`${ROOT_FOLDER_HOST}/media/cloud`; no shared mount propagation or `/dev/fuse`
+access is added to the app.
 
 It also installs `/etc/mistborn/config.toml`, the versioned desired-state
 configuration used by the Rust host-management engine. On a fresh installation
@@ -127,27 +165,24 @@ is never overwritten. A complete, non-secret example is available at
 `/usr/local/share/mistborn/config.toml.example`. Reinstalling or upgrading does
 not overwrite an existing `/etc/mistborn/config.toml`.
 
-Run `mistborn` or `mistborn help` without a subcommand to open the interactive
-command picker. Use the arrow keys (or `j`/`k`) to select an operation, Enter
-to run it, and `q` or Esc to return to the shell. On a completed command or
+Run `mistborn` without a subcommand to open the interactive command picker;
+`mistborn help` prints command-line usage. Use the arrow keys (or `j`/`k`) to
+select an operation, Enter to run it, and `q` or Esc to return to the shell.
+On a completed command or
 server setup screen, press `h` or Home to return to the command picker.
-
-App and core updates create native Runtipi app snapshots first. Pass
-`--no-backup` immediately after the update command to opt out.
 
 `mistborn status` and `mistborn doctor` run read-only Rust inspections. Status
 prints component versions and an observed-facts summary; doctor reports
 diagnostics with stable remediation IDs. Add `--format json` for machine
 readable output. Inspection errors remain distinguishable from detected drift,
 and checks for optional areas such as Plex are treated as unmanaged until the
-desired configuration enables them. The former Bash reports remain available
-for this compatibility release through `mistborn status --legacy` and
-`mistborn doctor --legacy`; Rust does not fall back to them automatically.
-JSON reports use a versioned envelope (`schema_version`, `command`, config
+desired configuration enables them. JSON reports use a versioned envelope
+(`schema_version`, `command`, config
 metadata, severity/error counts, and `drift_count`) alongside observed facts
 and diagnostics. CLI usage and format errors exit with status 2; drift exits 1.
-`sudo mistborn fix` enables and starts installed Docker and Tailscale services;
-it leaves firewall and SSH configuration untouched.
+The legacy Bash host commands are no longer installed. Use `mistborn plan`
+and `mistborn reconcile` for supported host repairs; update Runtipi with its
+own CLI and refresh Mistborn by rerunning the release installer.
 
 `mistborn plan [REMEDIATION]` is a read-only host reconciliation plan. It
 compares the loaded desired configuration with current observations, orders
@@ -214,14 +249,9 @@ with `sshd -t`, and reload—not restart—the SSH service. Tailscale remains
 unavailable pending its Phase 4 adapter. Fail2ban service activation remains
 low-risk, while jail-policy writes require explicit Access-risk approval.
 
-`sudo mistborn upgrade` refreshes the installed Mistborn runner and command to
-the latest stable bootstrap release. Existing completed setup stages remain
-skipped while the host-tool stage is refreshed. `sudo mistborn update-runtipi`
-updates Runtipi core, app stores, and apps with snapshots.
-
-`sudo mistborn update` is retained as an alias for `upgrade`. Hosts installed
-with v0.5.1 or earlier need a one-time installer rerun before the new command
-is available: `curl -fsSL https://github.com/EckPhi/mistborn-bootstrap/releases/latest/download/install.sh | sudo bash -s -- server --yes`.
+To refresh the installed Rust command, rerun the release installer. Completed
+setup stages remain skipped while the host-tool stage is refreshed. Before
+updating Runtipi through `runtipi-cli`, create app snapshots as needed.
 
 Enable hardening only after confirming key-based SSH access:
 

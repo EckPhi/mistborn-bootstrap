@@ -18,6 +18,11 @@ rclone_output="$(
 [[ "$rclone_output" == *"env HOME="*" rclone config"* ]]
 [[ "$rclone_output" != *"sudo -H -u root rclone config"* ]]
 
+rclone_service_output="$(MISTBORN_RCLONE_SERVICE=1 bash "$root/dist/server.sh" --dry-run --yes --user root --only rclone_service)"
+[[ "$rclone_service_output" == *"Would verify rclone rcd Unix-socket and authentication support"* ]]
+[[ "$rclone_service_output" == *"Would write root-only RC credentials"* ]]
+[[ "$rclone_service_output" != *"RCLONE_RC_PASS="* ]]
+
 plex_output="$(
   MISTBORN_HARDEN=1 MISTBORN_DISABLE_PASSWORD_AUTH=0 MISTBORN_PLEX_UFW=1 \
     MISTBORN_PLEX_LAN_CIDR=192.168.1.0/24 MISTBORN_PLEX_TAILSCALE=1 \
@@ -43,6 +48,10 @@ decoded_config="$(
 [[ "$decoded_config" == *'Optional sections are omitted'* ]]
 grep -Fq 'mistborn_publish_desired_config /etc/mistborn /usr/local/share/mistborn' "$root/dist/server.sh"
 grep -Fq "export MISTBORN_CONFIG_EXAMPLE_B64='" "$root/dist/server.sh"
+if grep -Fq 'MISTBORN_TOOL_B64' "$root/dist/server.sh"; then exit 1; fi
+if grep -Fq 'MISTBORN_UPDATE_PLAN_B64' "$root/dist/server.sh"; then exit 1; fi
+grep -Fq 'install -m 0755 /usr/local/bin/mistborn-bootstrap /usr/local/bin/mistborn' "$root/dist/server.sh"
+if grep -Fq 'host.sh' "$root/dist/server.sh"; then exit 1; fi
 
 if MISTBORN_HARDEN=1 MISTBORN_DISABLE_PASSWORD_AUTH=0 MISTBORN_PLEX_UFW=1 \
   MISTBORN_PLEX_LAN_CIDR=not-a-cidr \

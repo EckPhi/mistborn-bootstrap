@@ -62,9 +62,8 @@ live host observations and emits remediations. Documentation and help text must
 call the former an **installer migration plan** and the latter a **host
 reconciliation plan** to avoid ambiguity.
 
-The installed `mistborn` script becomes a thin launcher for Rust subcommands.
-Update and Runtipi operations may remain Bash-backed adapters while their
-behavior is unchanged.
+The installed `mistborn` command is the Rust binary itself. The former Bash
+host command and its update/Runtipi shortcuts are removed.
 
 ## Configuration v1
 
@@ -239,13 +238,12 @@ Acceptance gate:
 
 ### Phase 2: Read-only status and doctor
 
-- Move inspection logic from `assets/mistborn` into Rust adapters.
+- Keep inspection logic in Rust adapters; remove the legacy Bash host report.
 - Implement typed inspectors for packages, systemd, Docker, Runtipi, UFW,
   Plex, fail2ban, SSH, and Tailscale.
 - Make `mistborn status` concise and `mistborn doctor` comprehensive.
 - Add JSON output and stable remediation identifiers.
-- Leave the old Bash inspection functions available for one release as a
-  compatibility fallback, then remove them after parity fixtures pass.
+- Do not retain a Bash inspection fallback.
 
 Acceptance gate:
 
@@ -291,8 +289,9 @@ verification delivered together:
 5. **Packages and services**: consolidate apt and systemd adapters while
    retaining official external installers as Bash-backed actions.
 
-For each domain, remove its legacy repair path only after Rust parity tests,
-rollback instructions, and an upgrade path are present.
+The Bash host shortcuts are retired. Unsupported operations use their
+underlying service CLI until a bounded Rust adapter has parity tests and
+rollback instructions.
 
 ### Phase 5: Installer contraction
 
@@ -318,8 +317,7 @@ cargo test
 node --test tests/site.test.mjs
 bash tests/versioning.sh
 bash tests/generated.sh
-bash tests/status.sh
-shellcheck install.sh assets/mistborn lib/*.sh modules/*.sh tools/*.sh
+shellcheck install.sh lib/*.sh modules/*.sh tools/*.sh
 git diff --check
 ```
 

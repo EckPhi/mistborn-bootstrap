@@ -88,6 +88,37 @@ weight = 1
 inputs = ["MISTBORN_TAILSCALE_AUTO_UPDATE"]
 
 [[stages]]
+id = "rclone"
+title = "rclone"
+help = "Installs rclone and opens its interactive configuration when requested."
+[[stages.tasks]]
+id = "package"
+title = "Install rclone"
+action = "install rclone; ensure RC Unix-socket support when service mode is selected"
+weight = 1
+revision = 2
+inputs = ["MISTBORN_RCLONE_SERVICE"]
+[[stages.tasks]]
+id = "configuration"
+title = "Configure rclone"
+action = "rclone config"
+weight = 1
+inputs = ["MISTBORN_RCLONE_CONFIGURE", "MISTBORN_RCLONE_SERVICE"]
+
+[[stages]]
+id = "rclone_service"
+title = "rclone host service"
+help = "Optionally starts authenticated host rclone RC on a Unix socket before Runtipi installs. The proxy container can mount /run/rclone read-only."
+[[stages.tasks]]
+id = "service"
+title = "Configure rclone RC socket service"
+action = "configure unprivileged systemd service and authenticated Unix socket"
+weight = 2
+revision = 2
+inputs = ["MISTBORN_RCLONE_SERVICE"]
+requires_confirmation = true
+
+[[stages]]
 id = "runtipi"
 title = "Runtipi"
 help = "Installs Runtipi if its CLI is not already present."
@@ -96,22 +127,6 @@ id = "install"
 title = "Install or detect Runtipi"
 action = "run official Runtipi installer"
 weight = 3
-
-[[stages]]
-id = "rclone"
-title = "rclone"
-help = "Installs rclone and opens its interactive configuration when requested."
-[[stages.tasks]]
-id = "package"
-title = "Install rclone"
-action = "apt-get install rclone"
-weight = 1
-[[stages.tasks]]
-id = "configuration"
-title = "Configure rclone"
-action = "rclone config"
-weight = 1
-inputs = ["MISTBORN_RCLONE_CONFIGURE"]
 
 [[stages]]
 id = "security"
@@ -170,6 +185,6 @@ weight = 2
 [[stages.tasks]]
 id = "command"
 title = "Install the mistborn command and configuration"
-action = "install host command, update plan, and unmanaged desired-state configuration"
+action = "install native Rust host command and unmanaged desired-state configuration"
 weight = 1
-revision = 2
+revision = 3
