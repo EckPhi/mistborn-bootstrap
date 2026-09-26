@@ -37,7 +37,7 @@ mistborn_rclone_verify_service_capability() {
   for flag in --rc-addr --rc-user --rc-pass; do
     [[ "$rcd_help" == *"$flag"* ]] || { ui_error "Rclone at $binary lacks required service option $flag."; return 1; }
   done
-  global_help="$("$binary" --help 2>&1)" || { ui_error "Cannot inspect rclone global options in $binary."; return 1; }
+  global_help="$("$binary" help flags 2>&1)" || { ui_error "Cannot inspect rclone global options in $binary."; return 1; }
   [[ "$global_help" == *"--config"* ]] || { ui_error "Rclone at $binary lacks the required --config option."; return 1; }
 }
 

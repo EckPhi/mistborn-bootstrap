@@ -38,7 +38,8 @@ rclone() {
         printf 'Usage: rclone rcd --rc-addr stringArray --rc-user string --rc-pass string\n'
       fi
       ;;
-    '--help') printf 'Global flags: --config string\n' ;;
+    '--help') printf 'Use "rclone help flags" for to see the global flags.\n' ;;
+    'help flags') printf 'Global flags: --config string\n' ;;
     *) return 0 ;;
   esac
 }

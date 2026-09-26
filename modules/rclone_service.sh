@@ -57,7 +57,7 @@ mistborn_rclone_service_preflight() {
   [[ "$help" == *"--rc-addr"* && "$help" == *"--rc-user"* && "$help" == *"--rc-pass"* ]] || {
     ui_error "Installed rclone rcd lacks Unix socket and RC authentication flags."; return 1;
   }
-  help="$(rclone --help 2>&1)" || { ui_error "Cannot inspect rclone global options."; return 1; }
+  help="$(rclone help flags 2>&1)" || { ui_error "Cannot inspect rclone global options."; return 1; }
   [[ "$help" == *"--config"* ]] || { ui_error "Installed rclone lacks --config support."; return 1; }
   mistborn_rclone_check_service_account
   local home="${MISTBORN_RCLONE_ROOT:-}/var/lib/mistborn-rclone"
