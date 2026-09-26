@@ -25,7 +25,7 @@ if grep -Eq '5573|5574|--api-addr|gui --addr|ufw allow' "$root/modules/rclone_se
   exit 1
 fi
 
-# shellcheck disable=SC2329 # Preflight uses command -v to verify systemctl availability.
+# shellcheck disable=SC2317,SC2329 # Preflight verifies this mocked systemctl indirectly.
 systemctl() { return 0; }
 runuser() { return 0; }
 docker() { printf 'unexpected Docker probe\n' >&2; return 1; }

@@ -406,10 +406,10 @@ mistborn_rclone_check_service_account() {
   local account uid home shell groups expected_home="${MISTBORN_RCLONE_ROOT:-}/var/lib/mistborn-rclone"
   if ! account="$(getent passwd mistborn-rclone 2>/dev/null)"; then return 0; fi
   IFS=: read -r _ _ uid _ _ home shell <<<"$account"
-  [[ "$uid" =~ ^[0-9]+$ ]] && ((uid > 0 && uid < 1000)) \
-    && [[ "$home" == "$expected_home" && "$shell" == */nologin ]] || {
+  if ! [[ "$uid" =~ ^[0-9]+$ ]] || ! ((uid > 0 && uid < 1000)) \
+    || ! [[ "$home" == "$expected_home" && "$shell" == */nologin ]]; then
     ui_error "Existing mistborn-rclone account is not a non-root system account with the expected home and nologin shell."; return 1;
-  }
+  fi
   groups="$(id -nG mistborn-rclone 2>/dev/null)" || { ui_error "Cannot inspect mistborn-rclone groups."; return 1; }
   [[ "$groups" == mistborn-rclone ]] || {
     ui_error "Existing mistborn-rclone account has supplementary groups; only its dedicated primary group is allowed."; return 1;
@@ -652,8 +652,8 @@ module_rclone_service_apply() {
   trap 'mistborn_rclone_transaction_signal 129' HUP
   local was_active=0
   local was_enabled=0
-  systemctl is-active --quiet mistborn-rclone.service && was_active=1 || true
-  systemctl is-enabled --quiet mistborn-rclone.service && was_enabled=1 || true
+  if systemctl is-active --quiet mistborn-rclone.service; then was_active=1; fi
+  if systemctl is-enabled --quiet mistborn-rclone.service; then was_enabled=1; fi
   if ! id mistborn-rclone >/dev/null 2>&1; then
     useradd --system --user-group --home-dir "$home" --create-home --shell /usr/sbin/nologin mistborn-rclone
   else
