@@ -762,14 +762,7 @@ UMask=0007
 ExecStart=$rclone_bin --config=$config_file rcd --rc-addr=/run/rclone/rc.sock
 Restart=on-failure
 RestartSec=5
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-ProtectKernelTunables=true
-ProtectControlGroups=true
-ReadWritePaths=$home
-ReadWritePaths=/run/rclone
+NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target

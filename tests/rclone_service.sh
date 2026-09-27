@@ -20,6 +20,11 @@ grep -Fq 'RuntimeDirectoryPreserve=restart' "$root/modules/rclone_service.sh"
 grep -Fq 'UMask=0007' "$root/modules/rclone_service.sh"
 grep -Fq 'Before=docker.service' "$root/modules/rclone_service.sh"
 grep -Fq 'rcd --rc-addr=/run/rclone/rc.sock' "$root/modules/rclone_service.sh"
+grep -Fq 'NoNewPrivileges=false' "$root/modules/rclone_service.sh"
+if grep -Eq '^(ProtectSystem|ProtectHome|PrivateTmp|ProtectKernelTunables|ProtectControlGroups|ReadWritePaths|PrivateMounts)=' "$root/modules/rclone_service.sh"; then
+  printf 'rclone RC service must not use mount namespace isolation\n' >&2
+  exit 1
+fi
 if grep -Eq '5573|5574|--api-addr|gui --addr|ufw allow' "$root/modules/rclone_service.sh"; then
   printf 'TCP GUI/RC listener or firewall mutation remains in the service module\n' >&2
   exit 1

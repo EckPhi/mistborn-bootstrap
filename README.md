@@ -155,11 +155,16 @@ To rotate the login or reconfigure the service,
 reapply the confirmed `rclone_service/service` task with
 `MISTBORN_RCLONE_SERVICE=1`; it prompts for credentials and restarts the unit.
 
-This setup does not mount cloud files inside the Runtipi app/container. If you
-later choose to mount a remote on the host, do so separately with a host
-systemd mount service and an intentional host destination such as
-`${ROOT_FOLDER_HOST}/media/cloud`; no shared mount propagation or `/dev/fuse`
-access is added to the app.
+The RC service can create host-visible FUSE mounts through `mount/mount` without
+a systemd override. It still runs as the dedicated `mistborn-rclone` user, so
+give that user write access to each mountpoint. Use an intentional host
+destination such as `${ROOT_FOLDER_HOST}/media/cloud`. If a Runtipi app already
+bind-mounted the media directory before the FUSE mount was created, restart
+that app or configure host-to-container bind propagation. The rclone app
+container itself does not need `/dev/fuse` access. Existing services installed
+with older bootstrap versions must reapply `rclone_service/service` to receive
+the updated unit; remove any now-redundant local drop-in after verifying the
+managed unit provides the desired settings.
 
 It also installs `/etc/mistborn/config.toml`, the versioned desired-state
 configuration used by the Rust host-management engine. On a fresh installation
